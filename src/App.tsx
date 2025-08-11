@@ -10,6 +10,7 @@ import ProjectsList from "./pages/ProjectsList";
 import NotFound from "./pages/NotFound";
 import { ProjectsProvider } from "./contexts/ProjectsContext";
 import { SettingsProvider } from "./contexts/SettingsContext";
+import { FEATURES } from "./app.config";
 
 const queryClient = new QueryClient();
 
@@ -36,9 +37,16 @@ const App = () => {
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Index />} />
-                <Route path="/projects" element={<ProjectsList />} />
-                <Route path="/projects/create" element={<Projects />} />
-                <Route path="/projects/edit/:id" element={<Projects />} />
+                {FEATURES.projects && (
+                  <>
+                    <Route path="/projects" element={<ProjectsList />} />
+                    <Route path="/projects/create" element={<Projects />} />
+                    <Route path="/projects/edit/:id" element={<Projects />} />
+                  </>
+                )}
+                {!FEATURES.projects && (
+                  <Route path="/projects/*" element={<NotFound />} />
+                )}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>

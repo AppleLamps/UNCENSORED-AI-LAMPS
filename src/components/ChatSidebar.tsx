@@ -5,6 +5,7 @@ import ThemeToggle from './ThemeToggle';
 import { useChatContext } from '@/contexts/ChatContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useNavigate } from 'react-router-dom';
+import { FEATURES } from '../app.config';
 
 interface ChatSidebarProps {
   sidebarVisible: boolean;
@@ -140,13 +141,15 @@ const ChatSidebar = ({ sidebarVisible, formatDate, toggleSidebar }: ChatSidebarP
 
       {/* Sidebar Navigation */}
       <div className="px-3 py-2">
-        <button
-          onClick={() => navigate('/projects')}
-          className="flex items-center justify-start w-full px-3 py-2 text-sm rounded-md text-left group transition-colors duration-150 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <FolderKanban size={16} className="mr-2" />
-          <span>Projects</span>
-        </button>
+        {FEATURES.projects && (
+          <button
+            onClick={() => navigate('/projects')}
+            className="flex items-center justify-start w-full px-3 py-2 text-sm rounded-md text-left group transition-colors duration-150 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <FolderKanban size={16} className="mr-2" />
+            <span>Projects</span>
+          </button>
+        )}
       </div>
 
       {/* Active Project Chats */}
