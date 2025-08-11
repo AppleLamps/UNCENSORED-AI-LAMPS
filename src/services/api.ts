@@ -398,6 +398,11 @@ export const xaiService = {
       throw new Error("API Key is required. Please set your API key in settings.");
     }
     
+    // Log proxy mode status for debugging
+    if (USE_PROXY) {
+      console.log('Using server proxy mode - API calls will be handled server-side');
+    }
+    
     const apiOptions: APIOptions = {
       max_tokens: options.max_tokens,
       temperature: options.temperature,

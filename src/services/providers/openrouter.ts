@@ -19,8 +19,14 @@ const MAX_RETRIES = 2;
 const RETRY_DELAY = 1000;
 
 const prepareApiKey = (apiKey: string): string => {
-  if (!apiKey && !USE_PROXY) throw new Error("API Key is required");
-  const cleanKey = (apiKey || "").trim();
+  // When using proxy, API key is handled server-side
+  if (USE_PROXY) {
+    console.log('Proxy mode enabled - API key handled server-side');
+    return "";
+  }
+  
+  if (!apiKey) throw new Error("API Key is required when not using proxy mode");
+  const cleanKey = apiKey.trim();
   if (cleanKey.toLowerCase().startsWith("bearer ")) return cleanKey.slice(7);
   return cleanKey;
 };

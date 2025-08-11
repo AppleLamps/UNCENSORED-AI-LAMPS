@@ -45,12 +45,19 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     const storedMaxTokens = localStorage.getItem('maxTokens');
     const storedModel = localStorage.getItem('currentModel');
     
+    // Check if we're using server proxy mode
+    const useProxy = String((import.meta as any).env?.VITE_USE_PROXY || '').toLowerCase() === 'true';
+    
     if (storedApiKey) {
       setApiKey(storedApiKey);
-    } else {
-      // Automatically open settings panel if no API key is stored, unless using server proxy
-      const useProxy = String((import.meta as any).env?.VITE_USE_PROXY || '').toLowerCase() === 'true';
-      if (!useProxy) setSettingsOpen(true);
+    } else if (!useProxy) {
+      // Only open settings panel if no API key is stored AND we're not using server proxy
+      setSettingsOpen(true);
+    }
+    
+    // If using proxy, we don't need to store or validate API keys client-side
+    if (useProxy) {
+      console.log('Using server proxy mode - API keys handled server-side');
     }
 
     if (storedGetimgApiKey) {
@@ -130,4 +137,4 @@ export const useSettings = (): SettingsContextType => {
     throw new Error('useSettings must be used within a SettingsProvider');
   }
   return context;
-}; 
+};

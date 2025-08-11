@@ -102,3 +102,32 @@ GOOGLE_API_KEY=your_google_gemini_api_key_here
 ### Troubleshooting
 - If TTS fails, check that your API key is valid and has TTS access.
 - Errors will be shown as tooltips on the speaker button if playback fails.
+
+## Vercel Deployment
+
+This application is configured for easy deployment on Vercel with serverless functions.
+
+### Environment Variables
+
+When deploying to Vercel, set these environment variables in your Vercel dashboard:
+
+```
+VITE_USE_PROXY=true
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+GOOGLE_API_KEY=your_google_api_key_here
+GETIMG_API_KEY=your_getimg_api_key_here
+```
+
+### Deployment Steps
+
+1. Fork this repository to your GitHub account
+2. Connect your GitHub repository to Vercel
+3. Set the environment variables in Vercel dashboard under "Settings" > "Environment Variables"
+4. Deploy the application
+
+### Important Notes
+
+- When `VITE_USE_PROXY=true`, the frontend will not require API keys as all API calls are proxied through serverless functions
+- API keys are securely stored as environment variables on the server side
+- The `vercel.json` file is already configured with the necessary settings
+- All API routes in the `/api` folder will be automatically deployed as serverless functions
