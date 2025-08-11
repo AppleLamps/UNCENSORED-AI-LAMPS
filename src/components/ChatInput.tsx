@@ -119,10 +119,10 @@ const ChatInput = ({
   // Function to enhance prompts using AI
   const enhancePromptWithAI = async (originalPrompt: string): Promise<string> => {
     try {
-      // Get the API key from localStorage
+      // Check if proxy is enabled; if so, we don't need a client-side key
+      const useProxy = import.meta.env.VITE_USE_PROXY === 'true';
       const apiKey = localStorage.getItem('apiKey');
-      
-      if (!apiKey) {
+      if (!useProxy && !apiKey) {
         throw new Error("API key is missing");
       }
       
@@ -145,7 +145,6 @@ const ChatInput = ({
       ];
       
       // Call the API to enhance the prompt via OpenRouter (proxy-aware)
-      const useProxy = import.meta.env.VITE_USE_PROXY === 'true';
       const url = useProxy ? '/api/openrouter' : 'https://openrouter.ai/api/v1/chat/completions';
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -189,12 +188,13 @@ const ChatInput = ({
   // Function to handle image generation via Getimg FLUX.1 [schnell]
   const generateImage = async (prompt: string) => {
     try {
+      const useProxy = import.meta.env.VITE_USE_PROXY === 'true';
       const openRouterApiKey = localStorage.getItem('apiKey');
       const getimgApiKey = localStorage.getItem('getimgApiKey');
-      if (!openRouterApiKey) {
+      if (!useProxy && !openRouterApiKey) {
         throw new Error("API key is missing. Please set your OpenRouter API key in the settings.");
       }
-      if (!getimgApiKey) {
+      if (!useProxy && !getimgApiKey) {
         throw new Error("Getimg API key is missing. Please set it in Settings under Getimg API Key.");
       }
       
@@ -211,7 +211,6 @@ const ChatInput = ({
       const enhancedPrompt = await enhancePromptWithAI(prompt);
 
       // Call Getimg with minimal body per docs: expect top-level { url }
-      const useProxy = import.meta.env.VITE_USE_PROXY === 'true';
       const response = await fetch(useProxy ? '/api/getimg' : 'https://api.getimg.ai/v1/flux-schnell/text-to-image', {
         method: 'POST',
         headers: {
