@@ -78,3 +78,27 @@ If you encounter issues with the X.AI Grok API connection:
 4. Use the "Test API Key" button in Settings to validate your key before using the chat
 
 For more detailed guidance, see the [Grok API Setup Guide](GROK_API_SETUP.md).
+
+## Google Gemini TTS (Text-to-Speech) Integration
+
+This project supports text-to-speech for chat messages using Google Gemini TTS.
+
+### Setup
+1. Obtain a Google Gemini API key with TTS access.
+2. Create a `.env` file in the project root (if not present).
+3. Add the following line to your `.env` file:
+
+```
+GOOGLE_API_KEY=your_google_gemini_api_key_here
+```
+
+4. Restart your development server after adding the key.
+
+### Usage
+- A speaker icon appears before the copy button under each message.
+- Clicking the speaker icon will read the message aloud using Google Gemini TTS.
+- The backend securely proxies requests to the Gemini API; your API key is never exposed to the frontend.
+
+### Troubleshooting
+- If TTS fails, check that your API key is valid and has TTS access.
+- Errors will be shown as tooltips on the speaker button if playback fails.

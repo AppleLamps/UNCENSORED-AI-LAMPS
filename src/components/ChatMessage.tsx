@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Bot, User, Copy, ThumbsUp, ThumbsDown, Check, Play, RefreshCw, XCircle, Clock, RotateCw, Image, Brain, ChevronDown, ChevronUp, Download } from "lucide-react";
+import { Bot, User, Copy, ThumbsUp, ThumbsDown, Check, Play, RefreshCw, XCircle, Clock, RotateCw, Image, Brain, ChevronDown, ChevronUp, Download, Volume2 } from "lucide-react";
 import { useChatContext } from '@/contexts/ChatContext';
 import { cn } from "@/lib/utils";
 import ReactMarkdown from 'react-markdown';
@@ -295,7 +295,10 @@ const ChatMessage = ({ message, onRegenerate }: ChatMessageProps) => {
   const [copied, setCopied] = useState(false);
   const customBotName = useCustomBotName();
   const { setMessageReasoningVisible } = useChatContext();
-  
+  const [ttsLoading, setTtsLoading] = useState(false);
+  const [ttsError, setTtsError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   // Format timestamp for display
   const formatTimestamp = (timestamp: Date) => {
     if (!(timestamp instanceof Date) && typeof timestamp !== 'string') {
@@ -328,6 +331,55 @@ const ChatMessage = ({ message, onRegenerate }: ChatMessageProps) => {
     navigator.clipboard.writeText(textContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Extract plain text from message
+  const getMessageText = () => {
+    if (typeof message.content === 'string') return message.content;
+    if (Array.isArray(message.content)) {
+      return message.content
+        .filter(item => item.type === 'text' && item.text)
+        .map(item => (item as {type: 'text', text: string}).text)
+        .join(' ');
+    }
+    return '';
+  };
+
+  const handleTTS = async () => {
+    setTtsLoading(true);
+    setTtsError(null);
+    try {
+      const text = getMessageText();
+      if (!text) throw new Error('No text to read');
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err);
+      }
+      const data = await res.json();
+      const audioBase64 = data.audio;
+      if (!audioBase64) throw new Error('No audio data received');
+      const audioBlob = new Blob([
+        Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))
+      ], { type: 'audio/wav' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      if (audioRef.current) {
+        audioRef.current.src = audioUrl;
+        audioRef.current.play();
+      } else {
+        const audio = new window.Audio(audioUrl);
+        audioRef.current = audio;
+        audio.play();
+      }
+    } catch (e: any) {
+      setTtsError(e.message || 'TTS failed');
+    } finally {
+      setTtsLoading(false);
+    }
   };
   
   // Extract any image URLs from message content for convenience
@@ -568,6 +620,22 @@ const ChatMessage = ({ message, onRegenerate }: ChatMessageProps) => {
           
           {/* Message actions - only visible on hover */}
           <div className="mt-3 flex items-center gap-2 text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            {/* Speaker button for TTS */}
+            <button
+              onClick={handleTTS}
+              className="p-1 hover:text-gray-700 dark:hover:text-gray-200 rounded"
+              aria-label="Read message aloud"
+              disabled={ttsLoading}
+              title={ttsError ? ttsError : ttsLoading ? 'Loading...' : 'Read message aloud'}
+            >
+              {ttsLoading ? (
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /></svg>
+              ) : (
+                <Volume2 size={16} />
+              )}
+            </button>
+            <audio ref={audioRef} hidden />
+            {/* Copy button */}
             <button 
               onClick={copyToClipboard}
               className="p-1 hover:text-gray-700 dark:hover:text-gray-200 rounded"
