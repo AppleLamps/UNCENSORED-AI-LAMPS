@@ -49,8 +49,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
       setApiKey(storedApiKey);
     } else {
       // Automatically open settings panel if no API key is stored, unless using server proxy
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const useProxy = (import.meta as any).env?.VITE_USE_PROXY === 'true';
+      const useProxy = String((import.meta as any).env?.VITE_USE_PROXY || '').toLowerCase() === 'true';
       if (!useProxy) setSettingsOpen(true);
     }
 
