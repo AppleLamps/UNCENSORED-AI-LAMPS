@@ -2,7 +2,6 @@
 // Install: npm install express node-fetch dotenv
 // Run: node server.js
 import express from 'express';
-import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
