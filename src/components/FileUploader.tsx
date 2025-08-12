@@ -4,16 +4,6 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { Loader2, X, FileText, File as FileIcon, AlertCircle, Upload } from 'lucide-react';
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore – Vite’s `?worker` suffix provides correct typing at build time
-import PdfTextWorker from '../workers/pdfTextWorker?worker';
-
-/**
- * A singleton instance of the PDF text-extraction worker so we don’t spawn
- * multiple workers if the user uploads several PDFs in a row.
- */
-let pdfWorker: Worker | null = null;
-
 /* ---------- Utility helpers ---------- */
 
 const cn = (...classes: (string | boolean | undefined)[]) =>
@@ -48,54 +38,22 @@ const formatFileSize = (bytes: number) =>
     ? `${(bytes / 1024).toFixed(1)} KB`
     : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
-/* ---------- Web-worker powered PDF extraction ---------- */
+/* ---------- File reading helpers ---------- */
 
-const extractPdfWithWorker = (
-  file: File,
-  onProgress: (pct: number) => void
-): Promise<string> =>
+const readAsText = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
-    // Read file into ArrayBuffer first
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read PDF file'));
-    reader.onload = () => {
-      try {
-        if (!pdfWorker) {
-          pdfWorker = new PdfTextWorker();
-        }
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsText(file);
+  });
 
-        const handleMessage = (e: MessageEvent) => {
-          const { type } = e.data;
-          if (type === 'progress') {
-            onProgress(e.data.value as number);
-          } else if (type === 'done') {
-            cleanup();
-            resolve(e.data.text as string);
-          } else if (type === 'error') {
-            cleanup();
-            reject(new Error(e.data.error as string));
-          }
-        };
-
-        const cleanup = () => {
-          if (pdfWorker) {
-            pdfWorker.removeEventListener('message', handleMessage);
-          }
-        };
-
-        pdfWorker.addEventListener('message', handleMessage);
-        pdfWorker.postMessage({ arrayBuffer: reader.result }, [
-          reader.result as ArrayBuffer
-        ]);
-      } catch (err) {
-        reject(
-          new Error(
-            err instanceof Error ? err.message : 'PDF worker initialisation failed'
-          )
-        );
-      }
-    };
-    reader.readAsArrayBuffer(file);
+const readAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(file);
   });
 
 /* ---------- Type definitions ---------- */
@@ -105,7 +63,7 @@ export interface ProcessedFile {
   name: string;
   size: number;
   type: string;
-  content: string;
+  content: string; // For PDFs: data URL (base64); for text: raw text
 }
 
 interface FileUploaderProps {
@@ -181,7 +139,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
       maxSize: maxFileSize
     });
 
-  /* ---------- File processing ---------- */
+  /* ---------- File processing (OpenRouter path) ---------- */
 
   const processFiles = async (toProcess: File[]) => {
     setProcessing(true);
@@ -189,7 +147,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
     const processed: ProcessedFile[] = [];
     const failed: string[] = [];
-    let pdfWarning = false;
 
     for (let i = 0; i < toProcess.length; i++) {
       const file = toProcess[i];
@@ -202,32 +159,18 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         let content = '';
 
         if (isPdf) {
-          content = await extractPdfWithWorker(file, pct =>
-            setProcessingProgress(pct)
-          );
+          // For PDFs: produce base64 data URL to send to OpenRouter file-parser
+          content = await readAsDataUrl(file);
         } else {
-          content = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onerror = () => reject(new Error('Failed to read file'));
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsText(file);
-          });
-        }
-
-        if (
-          isPdf &&
-          (content.length < 100 ||
-            content.includes('Unable to extract text') ||
-            content.includes('No text content could be extracted'))
-        ) {
-          pdfWarning = true;
+          // For text-like formats: keep raw text
+          content = await readAsText(file);
         }
 
         processed.push({
           id: generateFileId(),
           name: file.name,
           size: file.size,
-          type: file.type,
+          type: file.type || (isPdf ? 'application/pdf' : ''),
           content
         });
       } catch (err) {
@@ -238,16 +181,11 @@ const FileUploader: React.FC<FileUploaderProps> = ({
       setProcessingProgress(Math.round(((i + 1) / toProcess.length) * 100));
     }
 
-    /* ---------- Post-processing feedback ---------- */
     if (failed.length) {
       setProcessingError(
         `Failed to process ${failed.length} file(s): ${failed.join(', ')}`
       );
       setFiles(prev => prev.filter(f => !failed.includes(f.name)));
-    } else if (pdfWarning && processed.length) {
-      setProcessingError(
-        'Limited text extracted from one or more PDFs. Consider uploading text-based files.'
-      );
     }
 
     if (processed.length) {
@@ -403,7 +341,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           <div className="flex items-center">
             <Loader2 size={16} className="animate-spin mr-2 text-blue-500" aria-hidden="true" />
             <span className="text-sm text-gray-700 dark:text-gray-300">
-              Processing files... ({processingProgress}%)
+              Preparing files... ({processingProgress}%)
             </span>
           </div>
           <label htmlFor="file-processing-progress" className="sr-only">
@@ -427,7 +365,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
       {remainingFiles <= 0 && processing && (
         <p className="sr-only">
-          All allowed files are being processed. Please wait until processing completes.
+          All allowed files are being prepared. Please wait until completion.
         </p>
       )}
     </div>

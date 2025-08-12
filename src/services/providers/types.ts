@@ -36,18 +36,33 @@ export interface AudioPart {
   };
 }
 
-export type MessageContent = string | Array<TextPart | ImagePart | VideoPart | AudioPart>;
+export interface FilePart {
+  type: "file";
+  file: {
+    filename: string;
+    file_data: string; // URL or data URL (base64)
+  };
+}
+
+export type MessageContent = string | Array<TextPart | ImagePart | VideoPart | AudioPart | FilePart>;
 
 export interface Message {
   role: MessageRole;
   content: MessageContent;
 }
 
-export interface Plugin {
-  id: "web";
-  max_results?: number;
-  search_prompt?: string;
-}
+export type Plugin =
+  | {
+      id: "web";
+      max_results?: number;
+      search_prompt?: string;
+    }
+  | {
+      id: "file-parser";
+      pdf?: {
+        engine?: "pdf-text" | "mistral-ocr" | "native";
+      };
+    };
 
 export interface APIOptions {
   temperature?: number;

@@ -10,7 +10,7 @@ import { ensureOnlineSlug } from '@/lib/utils';
 // Define types that align with the xaiService types
 type MessageRole = "system" | "user" | "assistant";
 type MessageContentItem = {
-  type: "text" | "image_url" | "video_url" | "audio_url";
+  type: "text" | "image_url" | "video_url" | "audio_url" | "file";
   text?: string;
   image_url?: {
     url: string;
@@ -23,6 +23,10 @@ type MessageContentItem = {
   audio_url?: {
     url: string;
     detail: "high" | "low" | "auto";
+  };
+  file?: {
+    filename: string;
+    file_data: string; // URL or data URL (base64)
   };
 };
 type MessageContent = string | MessageContentItem[];
@@ -680,10 +684,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
 
     // Collect file attachments from both current message and history
+    const currentHasFileParts = Array.isArray(userMessage.content) && (userMessage.content as any[]).some((p) => p && (p as any).type === 'file');
     let fileContextMessage = "";
 
     // First, check new files in the current user message
-    if (userMessage.fileContents && userMessage.fileNames) {
+    if (!currentHasFileParts && userMessage.fileContents && userMessage.fileNames) {
       const currentFiles = userMessage.fileNames.join(", ");
       fileContextMessage += `The user has uploaded the following files: ${currentFiles}. Here are the contents:\n\n${userMessage.fileContents}`;
     }
@@ -712,20 +717,29 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     currentMessageList.forEach(msg => {
       if (msg.role !== 'system') {
         if (!shouldUseVisionModel && Array.isArray(msg.content)) {
-          // Extract text parts
-          const textContent = msg.content
-            .filter(item => item.type === 'text')
-            .map(item => (item as { type: 'text', text: string }).text)
-            .join('\n');
+          const hasFileParts = msg.content.some((item: any) => item && item.type === 'file');
+          if (hasFileParts) {
+            // Preserve file parts to allow OpenRouter to reuse annotations
+            apiMessages.push({
+              role: msg.role,
+              content: msg.content
+            });
+          } else {
+            // Extract text parts
+            const textContent = msg.content
+              .filter(item => item.type === 'text')
+              .map(item => (item as { type: 'text', text: string }).text)
+              .join('\n');
 
-          // Add note for images
-          const hasImages = msg.content.some(item => item.type === 'image_url');
-          apiMessages.push({
-            role: msg.role,
-            content: hasImages
-              ? `${textContent}\n[This message contained images that are not shown in the history]`
-              : textContent
-          });
+            // Add note for images
+            const hasImages = msg.content.some(item => item.type === 'image_url');
+            apiMessages.push({
+              role: msg.role,
+              content: hasImages
+                ? `${textContent}\n[This message contained images that are not shown in the history]`
+                : textContent
+            });
+          }
         } else {
           apiMessages.push({
             role: msg.role,
@@ -748,7 +762,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const beginStreaming = useCallback(async (params: {
     apiMessages: any[];
     model: string;
-    plugins?: { id: "web"; max_results?: number; search_prompt?: string }[];
+    plugins?: any[];
     onError?: (error: Error) => void;
   }) => {
     const { apiMessages, model, plugins, onError } = params;
@@ -904,32 +918,45 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     // Generate message ID
     const id = customMessageId || generateId();
 
-    // Check if vision model should be used (for uploaded images)
-    const shouldUseVisionModel = images.length > 0;
+  // Check if vision model should be used (for uploaded images)
+  const shouldUseVisionModel = images.length > 0;
 
-    // Create message content
-    let messageContent: MessageContent = content;
+  // Derive PDF/non-PDF file sets (from processed files)
+  const pdfFiles = (files || []).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+  const nonPdfFiles = (files || []).filter(f => !(f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')));
 
-    // Format content for images
-    if (shouldUseVisionModel) {
-      messageContent = [
-        {
-          type: "text",
-          text: content || (isBotGenerated ? "Generated image for you:" : "Describe these images")
-        },
-        ...images.map(imgBase64 => ({
-          type: "image_url" as const,
-          image_url: {
-            url: imgBase64,
-            detail: "high" as const
-          }
-        }))
-      ];
-    }
+  // Create message content
+  let messageContent: MessageContent = content;
+
+  // Build multipart content if images or PDFs present
+  if (shouldUseVisionModel || pdfFiles.length > 0) {
+    messageContent = [
+      {
+        type: "text",
+        text: content || (isBotGenerated ? "Generated content:" : "Please analyze the attached files/images")
+      },
+      ...images.map(imgBase64 => ({
+        type: "image_url" as const,
+        image_url: {
+          url: imgBase64,
+          detail: "high" as const
+        }
+      })),
+      ...pdfFiles.map(f => ({
+        type: "file" as const,
+        file: {
+          filename: f.name,
+          file_data: f.content
+        }
+      }))
+    ];
+  }
 
     // Process file information
-    const fileContents = files.length > 0
-      ? files.map(file => `===== FILE: ${file.name} =====\n\n${file.content}\n\n`).join("\n")
+    const textFilesForContents = (files || []).filter(file => !(file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')));
+
+    const fileContents = textFilesForContents.length > 0
+      ? textFilesForContents.map(file => `===== FILE: ${file.name} =====\n\n${file.content}\n\n`).join("\n")
       : "";
 
     const fileNames = files.map(file => file.name);
@@ -996,7 +1023,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         ? ensureOnlineSlug(currentModel)
         : currentModel;
 
-    const plugins = webSearchActive ? [DEFAULT_WEB_PLUGIN] : undefined;
+    const basePlugins: any[] = [];
+    if (webSearchActive) basePlugins.push(DEFAULT_WEB_PLUGIN as any);
+    if (Array.isArray(messageContent) && (messageContent as any[]).some((p) => p && (p as any).type === 'file')) {
+      basePlugins.push({ id: 'file-parser', pdf: { engine: 'pdf-text' } });
+    }
+    const plugins = basePlugins.length > 0 ? basePlugins : undefined;
 
     // Stream via centralized helper with special plugin error handling
     await beginStreaming({
