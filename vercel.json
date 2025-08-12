@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "api/**/*.ts": {
-      "runtime": "edge"
-    }
-  },
   "env": {
     "VITE_USE_PROXY": "true"
   },
