@@ -7,6 +7,7 @@ import { xaiService } from "@/services/api";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useChatContext } from "@/contexts/ChatContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getEnabledModels } from "@/config/models";
 
 // Helper function to generate IDs
 const generateId = (prefix: string = ''): string => {
@@ -596,24 +597,12 @@ const ChatInput = ({
                       </div>
                     </SelectTrigger>
                       <SelectContent className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                      <SelectItem value="x-ai/grok-3">Grok‑3</SelectItem>
-                      <SelectItem value="x-ai/grok-4">Grok‑4</SelectItem>
-                       <SelectItem value="z-ai/glm-4.5">GLM 4.5</SelectItem>
-                       <SelectItem value="z-ai/glm-4.5v">GLM 4.5V (Vision)</SelectItem>
-                       <SelectItem value="z-ai/glm-4.5-air:free">GLM 4.5 Air (free)</SelectItem>
-                      <SelectItem value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</SelectItem>
-                      <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
-                      <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-                      <SelectItem value="cognitivecomputations/dolphin-mistral-24b-venice-edition:free">Venice Uncensored</SelectItem>
-                       <SelectItem value="openai/gpt-4o-2024-11-20">GPT‑4o (2024‑11‑20)</SelectItem>
-                       <SelectItem value="openai/gpt-4.1">GPT‑4.1</SelectItem>
-                      <SelectItem value="openai/gpt-5">GPT‑5 (thinking)</SelectItem>
-                      <SelectItem value="openai/gpt-5-chat">GPT‑5</SelectItem>
-                      <SelectItem value="openai/gpt-5-mini">GPT‑5 Mini</SelectItem>
-                      <SelectItem value="anthropic/claude-opus-4.1">Claude Opus 4.1</SelectItem>
-                      <SelectItem value="anthropic/claude-sonnet-4">Claude Sonnet 4</SelectItem>
-                      <SelectItem value="ai21/jamba-large-1.7">Jamba Large 1.7</SelectItem>
-                    </SelectContent>
+                        {getEnabledModels().map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                   </Select>
                 </div>
               )}

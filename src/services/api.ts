@@ -1,6 +1,7 @@
 import { toast } from "@/hooks/use-toast";
 import { openRouterProvider } from "./providers/openrouter";
 import type { APIOptions, ChatCompletionRequest, ChatCompletionResponse } from "./providers/types";
+import { DEFAULT_SYSTEM_PROMPT } from '@/config/models';
 
 // Shared type definitions
 type MessageRole = "system" | "user" | "assistant";
@@ -66,7 +67,7 @@ const addMarkdownFormattingInstructions = (messages: Message[]): Message[] => {
     // Add a new system message if none exists
     updatedMessages.unshift({
       role: "system",
-      content: `You are an AI assistant. You are helpful, concise, and provide accurate information. ${formattingText}`
+      content: `${DEFAULT_SYSTEM_PROMPT} ${formattingText}`
     });
   } else {
     // Update existing system message if it doesn't already have formatting instructions

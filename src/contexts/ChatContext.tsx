@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ProcessedFile } from "@/components/FileUploader";
 import { GPT4VisionPayload, MessageInterface, MessageRequestInterface, ModelType } from "@/types/chat";
 import { DEFAULT_WEB_PLUGIN } from '@/lib/constants';
+import { DEFAULT_SYSTEM_PROMPT } from '@/config/models';
 import { ensureOnlineSlug } from '@/lib/utils';
 
 // Define types that align with the xaiService types
@@ -667,11 +668,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         } catch (error) {
           console.error('Failed to parse custom bot data:', error);
           // Fallback to default system message
-          apiMessages.push({ role: 'system', content: "You are an AI assistant. You are helpful, creative, and provide accurate information. Answer questions in a friendly, conversational manner." });
+          apiMessages.push({ role: 'system', content: DEFAULT_SYSTEM_PROMPT });
         }
       } else {
         // Default system message when no custom bot is active
-        apiMessages.push({ role: 'system', content: "You are an AI assistant. You are helpful, creative, and provide accurate information. Answer questions in a friendly, conversational manner." });
+        apiMessages.push({ role: 'system', content: DEFAULT_SYSTEM_PROMPT });
       }
     }
 

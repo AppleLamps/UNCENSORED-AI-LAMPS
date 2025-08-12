@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { ChevronsUpDown, Eye, EyeOff } from "lucide-react";
 import { useSettings } from "@/contexts/SettingsContext";
 
+
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -372,6 +373,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       Maximum length of the model's response. Higher values allow for longer responses.
                     </p>
                   </div>
+                  
+
                 </div>
               )}
             </div>

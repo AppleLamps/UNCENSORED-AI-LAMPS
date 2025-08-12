@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { useToast } from "@/hooks/use-toast";
+import { getEnabledModels, isModelEnabled } from '@/config/models';
 
 // Context default values
 interface SettingsContextType {
@@ -32,7 +33,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [getimgApiKey, setGetimgApiKey] = useState("");
   const [modelTemperature, setModelTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(4000);
-  const [currentModel, setCurrentModel] = useState<string>('x-ai/grok-4');
+  const [currentModel, setCurrentModel] = useState<string>('cognitivecomputations/dolphin-mistral-24b-venice-edition:free');
   const [settingsOpen, setSettingsOpen] = useState(false);
   
   const { toast } = useToast();
@@ -72,8 +73,16 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
       setMaxTokens(parseInt(storedMaxTokens, 10));
     }
 
-    if (storedModel) {
+    if (storedModel && isModelEnabled(storedModel)) {
       setCurrentModel(storedModel);
+    } else {
+      // If no model is stored or the stored model is disabled, use the first enabled model (UNCENSORED)
+      const enabledModels = getEnabledModels();
+      if (enabledModels.length > 0) {
+        const defaultModel = enabledModels[0].id;
+        setCurrentModel(defaultModel);
+        localStorage.setItem('currentModel', defaultModel);
+      }
     }
   }, []);
   
