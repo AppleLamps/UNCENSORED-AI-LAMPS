@@ -80,7 +80,11 @@ export interface ChatCompletionResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    cache_read_tokens?: number;
+    cache_write_tokens?: number;
+    [key: string]: unknown;
   };
+  cache_discount?: number;
 }
 
 export interface ChatCompletionStreamResponse {
@@ -100,6 +104,7 @@ export interface StreamCallbacks {
   onReasoningChunk?: (chunk: string) => void;
   onComplete: () => void;
   onError: (error: Error) => void;
+  onController?: (controller: AbortController) => void;
 }
 
 export interface AIServiceProvider {
@@ -121,5 +126,3 @@ export interface AIServiceProvider {
     quick_replies?: string[];
   }>;
 }
-
-

@@ -94,6 +94,7 @@ interface ChatContextType {
   setMessageReasoningVisible: (messageId: string, visible: boolean) => void;
   isWebEnabled: boolean;
   toggleWebSearch: () => void;
+  cancelCurrentStream: () => void;
 }
 
 // Create context
@@ -170,6 +171,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const streamCompletedRef = useRef<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const streamControllerRef = useRef<AbortController | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const flushStreaming = useCallback(() => {
+    rafIdRef.current = null;
+    setStreamingMessage(prev => prev ? { ...prev, content: streamingContentRef.current } : prev);
+  }, []);
+  const scheduleFlush = useCallback(() => {
+    if (rafIdRef.current !== null) return;
+    rafIdRef.current = requestAnimationFrame(flushStreaming);
+  }, [flushStreaming]);
 
   const { toast } = useToast();
 
@@ -908,7 +919,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         // Use streaming API with API-aligned callback structure (single-flight guard)
         if (streamCompletedRef.current) return;
         await xaiService.streamResponse(
-          apiMessages,
+          apiMessages as any,
           apiKey,
           {
             onChunk: (chunk) => {
@@ -921,27 +932,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
               } else {
                 streamingContentRef.current = chunk;
               }
-
-              // Update UI with a more natural format for images
-              setStreamingMessage((prev) => {
-                if (!prev) return initialStreamingMessage;
-
-                // For messages with images that the user sent, make sure we format the response
-                // as a simple text response, not trying to include images in the response
-                if (shouldUseVisionModel) {
-                  return {
-                    ...prev,
-                    content: streamingContentRef.current
-                  };
-                } else {
-                  return {
-                    ...prev,
-                    content: streamingContentRef.current
-                  };
-                }
-              });
+              // Batch UI updates via rAF to reduce re-renders
+              scheduleFlush();
             },
-            onReasoningChunk: (chunk) => {
+            onController: (controller) => { streamControllerRef.current = controller; },
+          onReasoningChunk: (chunk) => {
               if (streamCompletedRef.current) return;
               reasoningContentRef.current += String(chunk);
               setStreamingMessage((prev) => prev ? { ...prev, reasoning: reasoningContentRef.current, reasoningVisible: true } : prev);
@@ -949,6 +944,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             onComplete: () => {
               if (streamCompletedRef.current) return;
               streamCompletedRef.current = true;
+              if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
               // Get final content
               const finalContent = streamingContentRef.current;
 
@@ -970,6 +966,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
               // Add to messages
               setMessages(prev => [...prev, finalMessage]);
+              streamControllerRef.current = null;
 
               // Handle chat ID and storage
               setTimeout(() => {
@@ -1150,7 +1147,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       // Use streaming API
       await xaiService.streamResponse(
-        apiMessages,
+        apiMessages as any,
         apiKey,
         {
           onChunk: (chunk) => {
@@ -1161,25 +1158,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             } else {
               streamingContentRef.current = chunk;
             }
-
-            // Update UI with a more natural format for images
-            setStreamingMessage((prev) => {
-              if (!prev) return initialStreamingMessage;
-              return {
-                ...prev,
-                content: streamingContentRef.current
-              };
-            });
+            // Batch UI updates via rAF
+            scheduleFlush();
           },
+          onController: (controller) => { streamControllerRef.current = controller; },
           onReasoningChunk: (chunk) => {
             if (streamCompletedRef.current) return;
             reasoningContentRef.current += String(chunk);
             setStreamingMessage((prev) => prev ? { ...prev, reasoning: reasoningContentRef.current, reasoningVisible: true } : prev);
           },
-          onComplete: () => {
-            if (streamCompletedRef.current) return;
-            streamCompletedRef.current = true;
-            // Get final content
+            onComplete: () => {
+              if (streamCompletedRef.current) return;
+              streamCompletedRef.current = true;
+              if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
+              // Get final content
             const finalContent = streamingContentRef.current;
 
             // Clear streaming state
@@ -1199,12 +1191,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
             // Add to messages
             setMessages(prev => [...prev, finalMessage]);
+            streamControllerRef.current = null;
           },
           onError: (error) => {
             console.error("Stream error during regeneration:", error);
+            if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
             setIsProcessing(false);
             setStreamingMessage(null);
             streamCompletedRef.current = true;
+            streamControllerRef.current = null;
 
             toast({
               title: "Error",
@@ -1275,6 +1270,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const toggleWebSearch = () => setIsWebEnabled(prev => !prev);
 
+  // Expose a cancel method for the current stream
+  const cancelCurrentStream = useCallback(() => {
+    try { streamControllerRef.current?.abort(); } catch {}
+    streamControllerRef.current = null;
+    setIsProcessing(false);
+    setStreamingMessage(null);
+    streamCompletedRef.current = true;
+  }, []);
+
   // Context value
   const contextValue: ChatContextType = {
     messages,
@@ -1303,6 +1307,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     },
     isWebEnabled,
     toggleWebSearch,
+    cancelCurrentStream,
   };
 
   return (

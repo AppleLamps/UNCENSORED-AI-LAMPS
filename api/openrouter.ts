@@ -33,10 +33,10 @@ export default async function handler(req: Request): Promise<Response> {
   return new Response(upstream.body, {
     status: upstream.status,
     headers: {
-      'Content-Type': contentType,
-      'Cache-Control': 'no-cache',
+      'Content-Type': body?.stream ? 'text/event-stream; charset=utf-8' : contentType,
+      'Cache-Control': body?.stream ? 'no-cache, no-transform' : 'no-cache',
+      'Connection': body?.stream ? 'keep-alive' : 'close',
+      'X-Accel-Buffering': body?.stream ? 'no' : 'yes',
     },
   });
 }
-
-

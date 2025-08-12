@@ -45,7 +45,7 @@ const ChatInput = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { currentModel, setCurrentModel } = useSettings();
-  const { isWebEnabled, toggleWebSearch } = useChatContext();
+  const { isWebEnabled, toggleWebSearch, cancelCurrentStream } = useChatContext();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -496,6 +496,7 @@ const ChatInput = ({
           
           <div className="border-t border-gray-200 dark:border-gray-600 px-3 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
+              
               <input
                 type="file"
                 ref={fileInputRef}
@@ -607,21 +608,36 @@ const ChatInput = ({
                 </div>
               )}
               
-              <button
-                type="submit"
-                disabled={(!input.trim() && selectedImages.length === 0 && processedFiles.length === 0) || isProcessing}
-                className={cn(
-                  "p-2 rounded-full transition-all duration-200 ml-2 shadow-sm",
-                  (input.trim() || selectedImages.length > 0 || processedFiles.length > 0) && !isProcessing 
-                    ? imageGenerationMode
-                      ? "bg-purple-600 text-white hover:bg-purple-700 hover:shadow-md transform hover:scale-105"
-                      : "bg-green-600 text-white hover:bg-green-700 hover:shadow-md transform hover:scale-105" 
-                    : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 opacity-50 cursor-not-allowed"
-                )}
-                aria-label="Send message"
-              >
-                <ArrowUp size={16} className="transition-transform duration-200" />
-              </button>
+              {isProcessing ? (
+                <button
+                  type="button"
+                  onClick={cancelCurrentStream}
+                  className={cn(
+                    "p-2 rounded-full transition-all duration-200 ml-2 shadow-sm",
+                    "bg-red-600 text-white hover:bg-red-700 hover:shadow-md transform hover:scale-105"
+                  )}
+                  aria-label="Stop generating"
+                  title="Stop generating"
+                >
+                  <X size={16} />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={(!input.trim() && selectedImages.length === 0 && processedFiles.length === 0)}
+                  className={cn(
+                    "p-2 rounded-full transition-all duration-200 ml-2 shadow-sm",
+                    (input.trim() || selectedImages.length > 0 || processedFiles.length > 0)
+                      ? imageGenerationMode
+                        ? "bg-purple-600 text-white hover:bg-purple-700 hover:shadow-md transform hover:scale-105"
+                        : "bg-green-600 text-white hover:bg-green-700 hover:shadow-md transform hover:scale-105" 
+                      : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 opacity-50 cursor-not-allowed"
+                  )}
+                  aria-label="Send message"
+                >
+                  <ArrowUp size={16} className="transition-transform duration-200" />
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1,12 +1,8 @@
 import { toast } from "@/hooks/use-toast";
 import { openRouterProvider } from "./providers/openrouter";
-import type { APIOptions, ChatCompletionRequest, ChatCompletionResponse } from "./providers/types";
+import type { APIOptions, ChatCompletionRequest, ChatCompletionResponse, StreamCallbacks, Message as AIMessage, MessageRole as AIMessageRole } from "./providers/types";
 import { DEFAULT_SYSTEM_PROMPT } from '@/config/models';
 
-// Shared type definitions
-type MessageRole = "system" | "user" | "assistant";
-type MessageContent = string | { type: "text" | "image_url" | "video_url" | "audio_url"; text?: string; image_url?: { url: string; detail: "high" | "low" | "auto" }; video_url?: { url: string; detail: "high" | "low" | "auto" }; audio_url?: { url: string; detail: "high" | "low" | "auto" } }[];
-interface Message { role: MessageRole; content: MessageContent; }
 
 // Stream response type no longer needed directly; provider handles it
 
@@ -51,7 +47,7 @@ const RETRY_DELAY = 1000; // 1 second delay between retries
 /**
  * Helper to add markdown formatting instructions to messages
  */
-const addMarkdownFormattingInstructions = (messages: Message[]): Message[] => {
+const addMarkdownFormattingInstructions = (messages: AIMessage[]): AIMessage[] => {
   const formattingText = "Format your responses using Markdown for better readability when appropriate: use *italics* for emphasis, bullet points and numbered lists where appropriate, and code blocks with syntax highlighting (```language) for code snippets.";
 
   // Create a copy of the messages to avoid mutating the original
@@ -222,7 +218,7 @@ export const xaiService = {
    * Send a message to the XAI API and get a response
    */
   sendMessage: async (
-    messages: Message[],
+    messages: AIMessage[],
     apiKey: string,
     options: APIOptions = {}
   ): Promise<string> => {
@@ -283,14 +279,9 @@ export const xaiService = {
    * Stream a response from the XAI API
    */
   streamResponse: async (
-    messages: Message[],
+    messages: AIMessage[],
     apiKey: string,
-    callbacks: {
-      onChunk: (chunk: string) => void,
-      onReasoningChunk?: (chunk: string) => void,
-      onComplete: () => void,
-      onError: (error: Error) => void
-    },
+    callbacks: StreamCallbacks,
     options: APIOptions = {}
   ): Promise<void> => {
     const { onChunk, onComplete, onError } = callbacks;
@@ -331,7 +322,7 @@ export const xaiService = {
         await openRouterProvider.streamResponse(
           formattedMessages,
           cleanApiKey,
-          { onChunk, onComplete, onError, onReasoningChunk: callbacks.onReasoningChunk },
+          { onChunk, onComplete, onError, onReasoningChunk: callbacks.onReasoningChunk, onController: callbacks.onController },
           options
         );
 
@@ -377,7 +368,7 @@ export const xaiService = {
     quick_replies?: string[];
   }> => {
     // Construct messages array with system instructions if provided
-    const messages: Message[] = [];
+    const messages: AIMessage[] = [];
     
     // Add system message with project instructions if provided
     if (options.projectInstructions) {
@@ -389,7 +380,7 @@ export const xaiService = {
     
     // Add the regular messages - ensure all content is string type
     messages.push(...options.messages.map(msg => ({
-      role: msg.role as MessageRole,
+      role: msg.role as AIMessageRole,
       content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
     })));
     
