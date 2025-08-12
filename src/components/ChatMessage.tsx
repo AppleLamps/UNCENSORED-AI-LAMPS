@@ -237,7 +237,20 @@ const CodeBlock = ({ language, value }: { language: string, value: string }) => 
       <SyntaxHighlighter
         language={language}
         style={oneLight}
-        customStyle={{ margin: 0, background: 'white' }}
+        showLineNumbers={true}
+        lineProps={() => ({
+          style: { backgroundColor: 'transparent !important' }
+        })}
+        customStyle={{ 
+          margin: 0, 
+          background: 'transparent',
+          fontSize: '1.15em'
+        }}
+        codeTagProps={{
+          style: {
+            backgroundColor: 'transparent !important'
+          }
+        }}
       >
         {value}
       </SyntaxHighlighter>
@@ -457,7 +470,7 @@ const ChatMessage = ({ message, onRegenerate }: ChatMessageProps) => {
               
               if (inline) {
                 return (
-                  <code className="font-mono bg-gray-100 dark:bg-gray-800 p-0.5 rounded text-sm" {...props}>
+                  <code className="font-mono p-0.5 rounded text-sm border border-gray-300 dark:border-gray-600" {...props}>
                     {String(children).replace(/\n$/, '')}
                   </code>
                 );
