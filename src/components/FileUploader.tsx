@@ -1,20 +1,24 @@
+// src/components/FileUploader.tsx
+
 import React, { useState, useCallback } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { Loader2, X, FileText, File as FileIcon, AlertCircle, Upload } from 'lucide-react';
 
-// Add this type definition at the top of your file
-declare global {
-  interface Window {
-    pdfjsLib: any;
-  }
-}
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore – Vite’s `?worker` suffix provides correct typing at build time
+import PdfTextWorker from '../workers/pdfTextWorker?worker';
 
-// Utility function to combine class names conditionally
-const cn = (...classes: (string | boolean | undefined)[]) => {
-  return classes.filter(Boolean).join(' ');
-};
+/**
+ * A singleton instance of the PDF text-extraction worker so we don’t spawn
+ * multiple workers if the user uploads several PDFs in a row.
+ */
+let pdfWorker: Worker | null = null;
 
-// File type definitions
+/* ---------- Utility helpers ---------- */
+
+const cn = (...classes: (string | boolean | undefined)[]) =>
+  classes.filter(Boolean).join(' ');
+
 const ACCEPTED_FILE_TYPES = {
   'application/pdf': ['.pdf'],
   'text/plain': ['.txt'],
@@ -23,115 +27,79 @@ const ACCEPTED_FILE_TYPES = {
   'application/json': ['.json']
 };
 
-// Maximum file size in bytes (5MB)
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
-// Utility functions for file processing
-const isValidFileType = (file: File): boolean => {
-  const fileExtension = file.name.split('.').pop()?.toLowerCase();
-  if (!fileExtension) return false;
-
-  const validExtensions = ['.pdf', '.txt', '.csv', '.md', '.json'];
-  return validExtensions.includes(`.${fileExtension}`);
+const isValidFileType = (file: File) => {
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  return ext ? ['pdf', 'txt', 'csv', 'md', 'json'].includes(ext) : false;
 };
 
-const getFileDisplayName = (fileName: string): string => {
-  // If filename is too long, truncate it
-  if (fileName.length > 25) {
-    const extension = fileName.split('.').pop();
-    const baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-    return `${baseName.substring(0, 15)}...${extension ? `.${extension}` : ''}`;
-  }
-  return fileName;
+const getFileDisplayName = (name: string) => {
+  if (name.length <= 25) return name;
+  const ext = name.split('.').pop();
+  const base = name.substring(0, name.lastIndexOf('.'));
+  return `${base.substring(0, 15)}...${ext ? `.${ext}` : ''}`;
 };
 
-// Utility function to extract text from a file
-const extractTextFromFile = async (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    // For PDFs, use PDF.js
-    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-      // Load PDF.js from CDN if not already loaded
-      const loadPdfJs = async () => {
-        if (window.pdfjsLib) return window.pdfjsLib;
+const formatFileSize = (bytes: number) =>
+  bytes < 1024
+    ? `${bytes} B`
+    : bytes < 1024 * 1024
+    ? `${(bytes / 1024).toFixed(1)} KB`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
-        return new Promise<typeof window.pdfjsLib>((resolveLib, rejectLib) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
-          script.onload = () => {
-            // Set worker path
-            window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-              'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-            resolveLib(window.pdfjsLib);
-          };
-          script.onerror = () => rejectLib(new Error('Failed to load PDF.js library'));
-          document.head.appendChild(script);
-        });
-      };
+/* ---------- Web-worker powered PDF extraction ---------- */
 
-      const processPdf = async () => {
-        try {
-          // Load PDF.js if needed
-          const pdfjs = await loadPdfJs();
-
-          // Read the file as an ArrayBuffer
-          const fileReader = new FileReader();
-          fileReader.onload = async function () {
-            try {
-              // Load the PDF document
-              const arrayBuffer = fileReader.result as ArrayBuffer;
-              const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-
-              // Extract text from each page
-              let fullText = "";
-              const totalPages = pdf.numPages;
-
-              for (let i = 1; i <= totalPages; i++) {
-                const page = await pdf.getPage(i);
-                const textContent = await page.getTextContent();
-
-                // Join all the text items together
-                const pageText = textContent.items
-                  .map(item => 'str' in item ? item.str : '')
-                  .join(' ');
-
-                fullText += `--- Page ${i} ---\n${pageText}\n\n`;
-              }
-
-              if (fullText.trim().length < 100) {
-                resolve("No text content could be extracted from this PDF. It may be a scanned document or contain only images.");
-              } else {
-                resolve(fullText);
-              }
-            } catch (error) {
-              console.error("PDF processing error:", error);
-              reject(new Error(`Failed to process PDF: ${error instanceof Error ? error.message : String(error)}`));
-            }
-          };
-
-          fileReader.onerror = () => reject(new Error('Failed to read PDF file'));
-          fileReader.readAsArrayBuffer(file);
-        } catch (error) {
-          console.error("PDF.js loading error:", error);
-          reject(new Error('Failed to load PDF processing library'));
-        }
-      };
-
-      processPdf();
-      return;
-    }
-
-    // For text files - unchanged from original
+const extractPdfWithWorker = (
+  file: File,
+  onProgress: (pct: number) => void
+): Promise<string> =>
+  new Promise((resolve, reject) => {
+    // Read file into ArrayBuffer first
     const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read PDF file'));
     reader.onload = () => {
-      const content = reader.result as string;
-      resolve(content);
-    };
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsText(file);
-  });
-};
+      try {
+        if (!pdfWorker) {
+          pdfWorker = new PdfTextWorker();
+        }
 
-// Type definitions
+        const handleMessage = (e: MessageEvent) => {
+          const { type } = e.data;
+          if (type === 'progress') {
+            onProgress(e.data.value as number);
+          } else if (type === 'done') {
+            cleanup();
+            resolve(e.data.text as string);
+          } else if (type === 'error') {
+            cleanup();
+            reject(new Error(e.data.error as string));
+          }
+        };
+
+        const cleanup = () => {
+          if (pdfWorker) {
+            pdfWorker.removeEventListener('message', handleMessage);
+          }
+        };
+
+        pdfWorker.addEventListener('message', handleMessage);
+        pdfWorker.postMessage({ arrayBuffer: reader.result }, [
+          reader.result as ArrayBuffer
+        ]);
+      } catch (err) {
+        reject(
+          new Error(
+            err instanceof Error ? err.message : 'PDF worker initialisation failed'
+          )
+        );
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
+/* ---------- Type definitions ---------- */
+
 export interface ProcessedFile {
   id: string;
   name: string;
@@ -149,243 +117,180 @@ interface FileUploaderProps {
   className?: string;
 }
 
+/* ---------- Component ---------- */
+
 const FileUploader: React.FC<FileUploaderProps> = ({
   onFileProcess,
   disabled = false,
   maxFiles = 5,
   maxFileSize = MAX_FILE_SIZE,
   acceptedFileTypes = ACCEPTED_FILE_TYPES,
-  className = ""
+  className = ''
 }) => {
   const [files, setFiles] = useState<File[]>([]);
-  const [processing, setProcessing] = useState<boolean>(false);
+  const [processing, setProcessing] = useState(false);
   const [processingError, setProcessingError] = useState<string | null>(null);
-  const [processingProgress, setProcessingProgress] = useState<number>(0);
+  const [processingProgress, setProcessingProgress] = useState(0);
   const [fileRejections, setFileRejections] = useState<FileRejection[]>([]);
 
-  // Generate a unique ID for files
-  const generateFileId = () => {
-    return Date.now().toString(36) + Math.random().toString(36).substring(2);
-  };
+  const generateFileId = () =>
+    Date.now().toString(36) + Math.random().toString(36).slice(2);
 
-  // Handle file drop
-  const onDrop = useCallback(async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
-    // Handle rejected files
-    if (rejectedFiles.length > 0) {
-      setFileRejections(rejectedFiles);
-
-      // Clear rejections after 5 seconds
-      setTimeout(() => {
-        setFileRejections([]);
-      }, 5000);
-    }
-
-    // Check if we would exceed max files
-    if (files.length + acceptedFiles.length > maxFiles) {
-      setProcessingError(`You can only upload up to ${maxFiles} files at a time.`);
-      return;
-    }
-
-    // Filter out invalid file types and sizes
-    const validFiles = acceptedFiles.filter(file => {
-      // Check file type
-      const isValid = isValidFileType(file);
-
-      // Check file size
-      const isValidSize = file.size <= maxFileSize;
-
-      if (!isValid || !isValidSize) {
-        if (!isValid) {
-          setProcessingError(`File "${file.name}" has an unsupported format. Only PDF, TXT, CSV, MD, and JSON files are supported.`);
-        } else if (!isValidSize) {
-          setProcessingError(`File "${file.name}" exceeds the maximum file size of ${formatFileSize(maxFileSize)}.`);
-        }
-        return false;
+  /* ---------- Dropzone ---------- */
+  const onDrop = useCallback(
+    async (accepted: File[], rejected: FileRejection[]) => {
+      if (rejected.length) {
+        setFileRejections(rejected);
+        setTimeout(() => setFileRejections([]), 5000);
       }
 
-      return true;
+      if (files.length + accepted.length > maxFiles) {
+        setProcessingError(`You can only upload up to ${maxFiles} files at a time.`);
+        return;
+      }
+
+      const valid = accepted.filter(f => {
+        const okType = isValidFileType(f);
+        const okSize = f.size <= maxFileSize;
+        if (!okType || !okSize) {
+          setProcessingError(
+            !okType
+              ? `File "${f.name}" has an unsupported format.`
+              : `File "${f.name}" exceeds ${formatFileSize(maxFileSize)}.`
+          );
+          return false;
+        }
+        return true;
+      });
+
+      if (!valid.length) return;
+
+      if (processingError) setProcessingError(null);
+      setFiles(prev => [...prev, ...valid]);
+
+      await processFiles(valid);
+    },
+    [files, maxFiles, maxFileSize, processingError]
+  );
+
+  const { getRootProps, getInputProps, isDragActive, isDragAccept, isDragReject } =
+    useDropzone({
+      onDrop,
+      disabled: disabled || processing || files.length >= maxFiles,
+      accept: acceptedFileTypes,
+      maxSize: maxFileSize
     });
 
-    if (validFiles.length === 0) return;
+  /* ---------- File processing ---------- */
 
-    // Reset error if we have valid files
-    if (processingError) {
-      setProcessingError(null);
-    }
-
-    // Add the valid files to state
-    setFiles(prev => [...prev, ...validFiles]);
-
-    // Process the files
-    await processFiles(validFiles);
-  }, [files, maxFiles, maxFileSize, processingError]);
-
-  // Setup react-dropzone
-  const {
-    getRootProps,
-    getInputProps,
-    isDragActive,
-    isDragAccept,
-    isDragReject,
-    open
-  } = useDropzone({
-    onDrop,
-    disabled: disabled || processing || files.length >= maxFiles,
-    accept: acceptedFileTypes,
-    maxSize: maxFileSize,
-    noClick: false,
-    noKeyboard: false
-  });
-
-  // Process files and extract content
-  const processFiles = async (filesToProcess: File[]) => {
+  const processFiles = async (toProcess: File[]) => {
     setProcessing(true);
-    setProcessingError(null);
     setProcessingProgress(0);
 
-    const processedFiles: ProcessedFile[] = [];
-    const failedFiles: string[] = [];
+    const processed: ProcessedFile[] = [];
+    const failed: string[] = [];
     let pdfWarning = false;
 
-    try {
-      for (let i = 0; i < filesToProcess.length; i++) {
-        const file = filesToProcess[i];
-        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    for (let i = 0; i < toProcess.length; i++) {
+      const file = toProcess[i];
+      const isPdf =
+        file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-        // Update progress
-        setProcessingProgress(Math.round(((i) / filesToProcess.length) * 100));
+      setProcessingProgress(Math.round((i / toProcess.length) * 100));
 
-        try {
-          // Extract text from file
-          const content = await extractTextFromFile(file);
+      try {
+        let content = '';
 
-          // Check if we got minimal content from a PDF
-          if (isPdf && (content.length < 100 ||
-            content.includes("Unable to extract text") ||
-            content.includes("No text content could be extracted"))) {
-            pdfWarning = true;
-          }
-
-          processedFiles.push({
-            id: generateFileId(),
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            content
+        if (isPdf) {
+          content = await extractPdfWithWorker(file, pct =>
+            setProcessingProgress(pct)
+          );
+        } else {
+          content = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsText(file);
           });
-        } catch (fileError) {
-          console.error(`Error processing file ${file.name}:`, fileError);
-          failedFiles.push(file.name);
-
-          // Continue processing other files even if one fails
-          continue;
         }
 
-        // Update progress again
-        setProcessingProgress(Math.round(((i + 1) / filesToProcess.length) * 100));
-      }
-
-      // Handle failures and warnings
-      if (failedFiles.length > 0) {
-        // Check if all failed files are PDFs
-        const allPdfs = failedFiles.every(name =>
-          name.toLowerCase().endsWith('.pdf')
-        );
-
-        if (allPdfs) {
-          setProcessingError(
-            `PDF processing issue: We couldn't process ${failedFiles.length === 1 ? 'this PDF file' : 'these PDF files'}: ${failedFiles.join(', ')}. ` +
-            `Try uploading a text file instead, or a PDF with selectable text rather than scanned content.`
-          );
-        } else {
-          setProcessingError(
-            `Warning: Failed to process ${failedFiles.length} file(s): ${failedFiles.join(', ')}. ` +
-            `These files were not included. Please make sure they contain text content and are not corrupted.`
-          );
+        if (
+          isPdf &&
+          (content.length < 100 ||
+            content.includes('Unable to extract text') ||
+            content.includes('No text content could be extracted'))
+        ) {
+          pdfWarning = true;
         }
 
-        // Remove failed files from the file list
-        setFiles(prev => prev.filter(file => !failedFiles.includes(file.name)));
-      } else if (pdfWarning && processedFiles.length > 0) {
-        // Show a warning if PDF processing was limited but not failed
-        setProcessingError(
-          `Note: Limited text was extracted from one or more PDF files. ` +
-          `If you don't get adequate responses about the PDF content, consider converting it to a text file first.`
-        );
+        processed.push({
+          id: generateFileId(),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          content
+        });
+      } catch (err) {
+        console.error(`Error processing ${file.name}:`, err);
+        failed.push(file.name);
       }
 
-      // If any files were processed, call the callback
-      if (processedFiles.length > 0) {
-        onFileProcess(processedFiles);
-      } else if (filesToProcess.length > 0) {
-        // If we attempted to process files but none succeeded
-        if (filesToProcess.every(file => file.name.toLowerCase().endsWith('.pdf'))) {
-          setProcessingError(
-            `PDF extraction failed: We couldn't extract text from your PDF file(s). ` +
-            `This often happens with scanned documents or PDFs that contain only images. ` +
-            `Try uploading a PDF with selectable text, or convert your content to a text file first.`
-          );
-        } else {
-          setProcessingError(`Error: Could not process any of the selected files. Please try different files.`);
-        }
-      }
-    } catch (error) {
-      console.error('Error processing files:', error);
-
-      // Provide a more specific error message for PDF.js worker issues
-      if (error instanceof Error && error.message.includes('worker')) {
-        setProcessingError(
-          `PDF processing error: There was a problem loading the PDF processing library. ` +
-          `This may be due to network issues or browser restrictions. ` +
-          `Try refreshing the page or using a text file instead.`
-        );
-      } else {
-        setProcessingError(`Error processing files: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    } finally {
-      setProcessing(false);
-      setProcessingProgress(100);
+      setProcessingProgress(Math.round(((i + 1) / toProcess.length) * 100));
     }
+
+    /* ---------- Post-processing feedback ---------- */
+    if (failed.length) {
+      setProcessingError(
+        `Failed to process ${failed.length} file(s): ${failed.join(', ')}`
+      );
+      setFiles(prev => prev.filter(f => !failed.includes(f.name)));
+    } else if (pdfWarning && processed.length) {
+      setProcessingError(
+        'Limited text extracted from one or more PDFs. Consider uploading text-based files.'
+      );
+    }
+
+    if (processed.length) {
+      onFileProcess(processed);
+    } else if (toProcess.length) {
+      setProcessingError('Could not process any of the selected files.');
+    }
+
+    setProcessing(false);
+    setProcessingProgress(100);
   };
 
-  // Remove a file
-  const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
-    if (processingError) {
-      setProcessingError(null);
-    }
+  /* ---------- UI helpers ---------- */
+
+  const removeFile = (idx: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== idx));
+    if (processingError) setProcessingError(null);
   };
 
-  // Clear all files
   const clearFiles = () => {
     setFiles([]);
     setProcessingError(null);
   };
 
-  // Format file size for display
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  /* ---------- Render ---------- */
 
-  // Get the number of remaining files that can be uploaded
   const remainingFiles = maxFiles - files.length;
 
   return (
-    <div className={cn("w-full", className)} aria-label="File uploader">
+    <div className={cn('w-full', className)} aria-label="File uploader">
       {/* Dropzone */}
       <div
         {...getRootProps()}
         className={cn(
-          "border-2 border-dashed rounded-lg p-4 transition-all",
-          "flex flex-col items-center justify-center text-center",
-          isDragActive && isDragAccept && "border-green-500 bg-green-50 dark:bg-green-900/10",
-          isDragActive && isDragReject && "border-red-500 bg-red-50 dark:bg-red-900/10",
-          !isDragActive && "border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600",
-          (disabled || processing || files.length >= maxFiles) && "opacity-50 cursor-not-allowed",
-          !disabled && files.length < maxFiles && !processing && "cursor-pointer",
-          "h-28"
+          'border-2 border-dashed rounded-lg p-4 transition-all',
+          'flex flex-col items-center justify-center text-center',
+          isDragActive && isDragAccept && 'border-green-500 bg-green-50 dark:bg-green-900/10',
+          isDragActive && isDragReject && 'border-red-500 bg-red-50 dark:bg-red-900/10',
+          !isDragActive &&
+            'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600',
+          (disabled || processing || files.length >= maxFiles) && 'opacity-50 cursor-not-allowed',
+          !disabled && files.length < maxFiles && !processing && 'cursor-pointer',
+          'h-28'
         )}
         aria-live="polite"
       >
@@ -415,7 +320,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         )}
       </div>
 
-      {/* File rejection errors */}
+      {/* Rejection errors */}
       {fileRejections.length > 0 && (
         <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
           <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
@@ -432,7 +337,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         </div>
       )}
 
-      {/* Processing error message */}
+      {/* Processing / Error messages */}
       {processingError && (
         <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
           <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
@@ -501,7 +406,9 @@ const FileUploader: React.FC<FileUploaderProps> = ({
               Processing files... ({processingProgress}%)
             </span>
           </div>
-          <label htmlFor="file-processing-progress" className="sr-only">File processing progress</label>
+          <label htmlFor="file-processing-progress" className="sr-only">
+            File processing progress
+          </label>
           <progress
             id="file-processing-progress"
             className="w-full h-1.5 mt-2"
@@ -512,10 +419,15 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         </div>
       )}
 
-      {/* Helpful message when max files is reached */}
       {files.length >= maxFiles && (
         <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
           Maximum number of files reached. Remove some files to upload more.
+        </p>
+      )}
+
+      {remainingFiles <= 0 && processing && (
+        <p className="sr-only">
+          All allowed files are being processed. Please wait until processing completes.
         </p>
       )}
     </div>
