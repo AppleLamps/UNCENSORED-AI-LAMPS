@@ -147,6 +147,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   maxTokens,
   currentModel
 }) => {
+  // Detect whether server proxy mode is enabled (e.g., on Vercel)
+  const useProxy = String((import.meta as any).env?.VITE_USE_PROXY || '').toLowerCase() === 'true';
   // State
   const [messages, setMessages] = useState<Message[]>(() =>
     retrieveFromLocalStorage<Message[]>(STORAGE_KEYS.MESSAGES, [])
@@ -759,8 +761,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   ) => {
     if (!content.trim() && images.length === 0 && files.length === 0) return;
 
-    // Validate API key
-    if (!apiKey) {
+    // Validate API key unless using server proxy mode
+    if (!apiKey && !useProxy) {
       toast({
         title: "API Key Missing",
         description: "Please set your API key in the settings.",
