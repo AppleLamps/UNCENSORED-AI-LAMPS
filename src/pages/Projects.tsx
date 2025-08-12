@@ -1106,14 +1106,14 @@ const Projects: React.FC = () => {
                                 components={{
                                   code: ({ node, className, children, ...props }) => {
                                     const match = /language-(\w+)/.exec(className || '');
-                                    return !(props as any).inline ? (
-                                      <pre className="bg-gray-800 p-4 rounded-md overflow-x-auto text-sm">
+                                  return !(props as any).inline ? (
+                                      <pre className="bg-white border border-gray-200 rounded-xl overflow-x-auto text-sm shadow-sm p-4">
                                         <code className={match ? `language-${match[1]}` : ''} {...props}>
                                           {String(children).replace(/\n$/, '')}
                                         </code>
                                       </pre>
                                     ) : (
-                                      <code className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm" {...props}>
+                                      <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm" {...props}>
                                         {children}
                                       </code>
                                     );

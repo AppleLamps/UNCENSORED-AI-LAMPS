@@ -128,15 +128,13 @@ const ChatSidebar = ({ sidebarVisible, formatDate, toggleSidebar }: ChatSidebarP
       "md:pt-0 pt-16", // Add top padding on mobile to account for header
       !sidebarVisible && "md:opacity-0 md:w-0 md:overflow-hidden"
     )}>
-      {/* New Chat Button */}
-      <div className="p-4">
-        <button
-          onClick={handleStartNewChat}
-          className="flex items-center justify-center w-full px-4 py-2.5 text-sm font-medium text-white bg-green-500 hover:bg-green-600 rounded-full shadow-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-50"
-        >
-          <Plus size={16} className="mr-2" />
-          New chat
-        </button>
+      {/* Brand Header */}
+      <div className="px-6 pt-8 pb-6 select-none flex justify-center">
+        <h1 className="w-full text-center text-3xl font-black tracking-tight">
+          <span className="inline-block text-shiny-black">
+            UNCENSORED
+          </span>
+        </h1>
       </div>
 
       {/* Sidebar Navigation */}
@@ -150,6 +148,17 @@ const ChatSidebar = ({ sidebarVisible, formatDate, toggleSidebar }: ChatSidebarP
             <span>Projects</span>
           </button>
         )}
+      </div>
+
+      {/* New Chat Button moved below navigation */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={handleStartNewChat}
+          className="flex items-center justify-center w-full px-4 py-2.5 text-sm font-medium text-white bg-green-500 hover:bg-green-600 rounded-full shadow-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-50"
+        >
+          <Plus size={16} className="mr-2" />
+          New chat
+        </button>
       </div>
 
       {/* Active Project Chats */}

@@ -472,7 +472,7 @@ const MessageHeader: React.FC<MessageHeaderProps> = ({ isUser, timestamp }) => {
       
       {/* Name */}
       <span className="text-gray-900 dark:text-gray-100">
-        {isUser ? "You" : "Grok"}
+        {isUser ? "You" : "UNCENSORED"}
       </span>
       
       {/* AI badge */}
@@ -583,8 +583,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content }) => {
                 <img 
                   src={imageSrc} 
                   alt={`Image ${index + 1}`} 
-                  className="rounded-md border border-gray-300 dark:border-gray-700"
-                  style={{ maxHeight: '300px', maxWidth: '100%', objectFit: 'contain' }}
+                  className="rounded-md border border-gray-300 dark:border-gray-700 max-h-[300px] max-w-full object-contain"
                 />
               </div>
             ))}

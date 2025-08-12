@@ -1,3 +1,3 @@
 export const FEATURES = {
-  projects: true, // Set to false to disable Projects
+  projects: false, // Set to false to disable Projects
 };

@@ -4,7 +4,7 @@ import { useChatContext } from '@/contexts/ChatContext';
 import { cn } from "@/lib/utils";
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Custom hook to get the active bot name
 const useCustomBotName = () => {
@@ -211,14 +211,14 @@ const CodeBlock = ({ language, value }: { language: string, value: string }) => 
   };
   
   return (
-    <div className="relative rounded-md overflow-hidden my-4 border border-gray-300 dark:border-gray-700 group">
-      <div className="flex items-center justify-between py-1 px-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs">
+    <div className="relative rounded-xl overflow-hidden my-4 border border-gray-200 group bg-white shadow-sm">
+      <div className="flex items-center justify-between py-1.5 px-3 bg-gray-50 text-gray-600 text-xs border-b border-gray-200">
         <span className="font-mono">{language}</span>
         <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           {isPreviewable && (
             <button
               onClick={() => setShowPreview(!showPreview)}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+              className="p-1 rounded hover:bg-gray-200/60"
               title={showPreview ? "Hide preview" : "Show preview"}
             >
               <Play size={14} className={showPreview ? "text-green-500" : ""} />
@@ -226,7 +226,7 @@ const CodeBlock = ({ language, value }: { language: string, value: string }) => 
           )}
           <button
             onClick={handleCopy}
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+            className="p-1 rounded hover:bg-gray-200/60"
             title="Copy code"
           >
             {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
@@ -236,29 +236,29 @@ const CodeBlock = ({ language, value }: { language: string, value: string }) => 
       
       <SyntaxHighlighter
         language={language}
-        style={vscDarkPlus}
-        customStyle={{ margin: 0 }}
+        style={oneLight}
+        customStyle={{ margin: 0, background: 'white' }}
       >
         {value}
       </SyntaxHighlighter>
       
       {/* Preview section (if enabled) */}
       {showPreview && (
-        <div className="border-t border-gray-300 dark:border-gray-700">
-          <div className="flex items-center justify-between py-1 px-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs">
+        <div className="border-t border-gray-200 bg-white">
+          <div className="flex items-center justify-between py-1.5 px-3 bg-gray-50 text-gray-600 text-xs">
             <span>Output</span>
             <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <button
                 onClick={runCode}
                 disabled={isRunning}
-                className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+                className="p-1 rounded hover:bg-gray-200/60"
                 title="Run code again"
               >
                 <RefreshCw size={14} className={isRunning ? "animate-spin" : ""} />
               </button>
               <button
                 onClick={() => setShowPreview(false)}
-                className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+                className="p-1 rounded hover:bg-gray-200/60"
                 title="Close preview"
               >
                 <XCircle size={14} />
@@ -268,20 +268,20 @@ const CodeBlock = ({ language, value }: { language: string, value: string }) => 
           
           <div 
             ref={outputRef}
-            className="bg-black text-white p-3 font-mono text-sm overflow-auto max-h-[300px]"
+            className="bg-gray-50 text-gray-800 p-3 font-mono text-sm overflow-auto max-h-[300px]"
           >
             {isRunning ? (
-              <div className="text-gray-400">Running code...</div>
+              <div className="text-gray-500">Running code...</div>
             ) : previewOutput.length > 0 ? (
               previewOutput.map((output, i) => (
                 <div 
                   key={i} 
-                  className={hasError && i === previewOutput.length - 1 ? "text-red-400" : ""}
+                  className={hasError && i === previewOutput.length - 1 ? "text-red-600" : ""}
                   dangerouslySetInnerHTML={{ __html: output }}
                 />
               ))
             ) : (
-              <div className="text-gray-400">No output</div>
+              <div className="text-gray-500">No output</div>
             )}
           </div>
         </div>
@@ -564,7 +564,7 @@ const ChatMessage = ({ message, onRegenerate }: ChatMessageProps) => {
             )}
             
             <span className="text-gray-900 dark:text-gray-100">
-              {isUser ? "You" : (customBotName || "Assistant")}
+              {isUser ? "You" : (customBotName || "UNCENSORED")}
             </span>
             
             {/* Timestamp display */}

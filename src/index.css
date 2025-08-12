@@ -62,8 +62,8 @@
     --tw-prose-captions: #6b7280;
     --tw-prose-code: #111827;
     --tw-prose-code-bg: #f3f4f6;
-    --tw-prose-pre-code: #e5e7eb;
-    --tw-prose-pre-bg: #1f2937;
+    --tw-prose-pre-code: #4b5563;
+    --tw-prose-pre-bg: #ffffff;
     --tw-prose-th-borders: #d1d5db;
     --tw-prose-td-borders: #e5e7eb;
   }
@@ -148,7 +148,15 @@
   }
 
   pre {
-    @apply p-4 rounded-lg overflow-auto;
+    @apply p-4 rounded-xl overflow-auto bg-white border border-gray-200 shadow-sm;
+  }
+
+  /* Ensure markdown typography keeps pre/code light */
+  .prose pre {
+    @apply bg-white border border-gray-200 shadow-sm rounded-xl;
+  }
+  .prose pre code {
+    @apply bg-transparent;
   }
 
   pre code {
@@ -281,5 +289,14 @@
   }
   .bg-gold-soft {
     background-color: rgba(212, 175, 55, 0.15);
+  }
+
+  /* Shiny black text treatment for brand */
+  .text-shiny-black {
+    background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 35%, #000000 70%, #0e0e0e 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 8px rgba(0, 0, 0, 0.35);
   }
 }
