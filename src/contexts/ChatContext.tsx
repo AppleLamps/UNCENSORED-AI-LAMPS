@@ -115,6 +115,12 @@ const generateId = (prefix: string = ''): string => {
   return `${prefix}${timestamp}-${randomStr}`;
 };
 
+// Vision model selector (single source of truth)
+const getVisionModel = (currentModel: string): string => {
+  if (currentModel === "z-ai/glm-4.5v") return "z-ai/glm-4.5v";
+  return "x-ai/grok-vision-beta";
+};
+
 const storeInLocalStorage = <T,>(key: string, value: T): void => {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -173,10 +179,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const streamControllerRef = useRef<AbortController | null>(null);
   const rafIdRef = useRef<number | null>(null);
+
   const flushStreaming = useCallback(() => {
     rafIdRef.current = null;
     setStreamingMessage(prev => prev ? { ...prev, content: streamingContentRef.current } : prev);
   }, []);
+
   const scheduleFlush = useCallback(() => {
     if (rafIdRef.current !== null) return;
     rafIdRef.current = requestAnimationFrame(flushStreaming);
@@ -184,62 +192,46 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const { toast } = useToast();
 
-  // Reset isProcessing on page visibility changes (if browser tab is switched/hidden)
+  // Reset isProcessing on page visibility changes and fallback timeout
   useEffect(() => {
+    let processingTimer: ReturnType<typeof setTimeout> | null = null;
+    let visibilityTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const resetStuckState = (reason: string) => {
+      setIsProcessing(prev => {
+        if (prev) {
+          console.log(`Resetting stuck isProcessing state (${reason})`);
+          return false;
+        }
+        return prev;
+      });
+      setStreamingMessage(prev => {
+        if (prev) {
+          console.log(`Clearing stuck streamingMessage (${reason})`);
+          return null;
+        }
+        return prev;
+      });
+    };
+
     const handleVisibilityChange = () => {
       if (document.hidden) return;
-
-      // If the page becomes visible again and we're still in processing state
-      // for more than 10 seconds, reset the state
       if (isProcessing) {
-        setTimeout(() => {
-          setIsProcessing(prev => {
-            if (prev) {
-              console.log("Resetting stuck isProcessing state");
-              return false;
-            }
-            return prev;
-          });
-
-          setStreamingMessage(prev => {
-            if (prev) {
-              console.log("Clearing stuck streamingMessage");
-              return null;
-            }
-            return prev;
-          });
-        }, 5000);
+        if (visibilityTimer) clearTimeout(visibilityTimer);
+        visibilityTimer = setTimeout(() => resetStuckState("visibilitychange"), 5000);
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // Fallback timeout to reset processing state if it gets stuck
-    let processingTimer: ReturnType<typeof setTimeout> | null = null;
-
     if (isProcessing) {
-      processingTimer = setTimeout(() => {
-        setIsProcessing(prev => {
-          if (prev) {
-            console.log("Resetting stuck isProcessing state via fallback timer");
-            return false;
-          }
-          return prev;
-        });
-
-        setStreamingMessage(prev => {
-          if (prev) {
-            console.log("Clearing stuck streamingMessage via fallback timer");
-            return null;
-          }
-          return prev;
-        });
-      }, 60000); // 1 minute timeout
+      processingTimer = setTimeout(() => resetStuckState("fallback timer"), 60000);
     }
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (processingTimer) clearTimeout(processingTimer);
+      if (visibilityTimer) clearTimeout(visibilityTimer);
     };
   }, [isProcessing]);
 
@@ -290,9 +282,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     } else {
       addWelcomeMessage();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Save messages to localStorage
+  // Track reasoning toggle events
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { messageId: string; visible: boolean };
@@ -307,13 +300,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     };
   }, []);
 
+  // Persist messages
   useEffect(() => {
     if (messages.length > 0) {
       storeInLocalStorage(STORAGE_KEYS.MESSAGES, messages);
     }
   }, [messages]);
 
-  // Save chats to localStorage
+  // Persist chats
   useEffect(() => {
     if (savedChats.length > 0) {
       storeInLocalStorage(STORAGE_KEYS.SAVED_CHATS, savedChats);
@@ -321,9 +315,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   }, [savedChats]);
 
   // Scroll to bottom for new messages
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingMessage?.content]);
+  }, [messages, streamingMessage?.content, scrollToBottom]);
 
   // Debug logging for messages
   useEffect(() => {
@@ -339,15 +338,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
   }, [messages]);
 
-  // Scroll to bottom function
-  const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
   // Add welcome message
-  const addWelcomeMessage = () => {
+  const addWelcomeMessage = useCallback(() => {
     // Check if there's a custom bot to use
     const customBotString = localStorage.getItem('currentCustomBot');
 
@@ -410,10 +402,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     };
 
     setMessages([welcomeMessage]);
-  };
+  }, []);
 
   // Get chat title from messages
-  const getChatTitle = (chatMessages: Message[]): string => {
+  const getChatTitle = useCallback((chatMessages: Message[]): string => {
     if (chatMessages.length <= 1) return "New Chat";
 
     // Find first user message
@@ -427,10 +419,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
     // Limit title length
     return title.length > 50 ? `${title.substring(0, 50)}...` : title;
-  };
+  }, []);
 
   // Save current chat (ensures an ID exists and writes synchronously to localStorage too)
-  const saveCurrentChat = () => {
+  const saveCurrentChat = useCallback(() => {
     if (messages.length <= 1) return; // Ignore empty/welcome-only chats
 
     // Ensure we have a chat ID
@@ -494,17 +486,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         storeInLocalStorage(STORAGE_KEYS.MESSAGES, messages);
       } catch {}
     }
-  };
+  }, [messages, currentChatId, savedChats, getChatTitle]);
 
   // Load saved chat
-  const loadSavedChat = (chatId: string) => {
+  const loadSavedChat = useCallback((chatId: string) => {
     if (isProcessing) return;
 
     const chatToLoad = savedChats.find(chat => chat.id === chatId);
     if (!chatToLoad) return;
 
     // Save current chat before switching
-    saveCurrentChat();
+    try { saveCurrentChat(); } catch {}
 
     // Clear any existing custom bot data to prevent conflicts
     sessionStorage.removeItem('activeCustomBot');
@@ -536,10 +528,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         try { sessionStorage.setItem('activeCustomBot', JSON.stringify(minimumBotInfo)); } catch {}
       }
     }
-  };
+  }, [isProcessing, savedChats, saveCurrentChat]);
 
   // Delete saved chat
-  const deleteSavedChat = (chatId: string, e: React.MouseEvent) => {
+  const deleteSavedChat = useCallback((chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
     const updatedChats = savedChats.filter(chat => chat.id !== chatId);
@@ -554,12 +546,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       title: "Chat Deleted",
       description: "The chat has been removed from your history.",
     });
-  };
+  }, [savedChats, currentChatId, toast]);
 
   // Rename saved chat
-  const renameSavedChat = (chatId: string, newTitle: string) => {
-    const updatedChats = savedChats.map(chat => 
-      chat.id === chatId 
+  const renameSavedChat = useCallback((chatId: string, newTitle: string) => {
+    const updatedChats = savedChats.map(chat =>
+      chat.id === chatId
         ? { ...chat, title: newTitle.trim() || "Untitled Chat", lastUpdated: new Date() }
         : chat
     );
@@ -569,10 +561,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       title: "Chat Renamed",
       description: "The chat title has been updated.",
     });
-  };
+  }, [savedChats, toast]);
 
   // Helper function to enhance system messages with personality guidance
-  const enhanceSystemMessageForCustomBot = (instructions: string): string => {
+  const enhanceSystemMessageForCustomBot = useCallback((instructions: string): string => {
     // Add reinforcement of personality and role to the system message
     let enhancedInstructions = instructions;
 
@@ -594,10 +586,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
 
     return enhancedInstructions;
-  };
+  }, []);
 
   // Helper function to gather all file attachments from previous messages
-  const collectFileAttachmentsFromHistory = (messageHistory: Message[]): { contents: string, names: string[] } => {
+  const collectFileAttachmentsFromHistory = useCallback((messageHistory: Message[]): { contents: string, names: string[] } => {
     // Create a map to track unique files by name to avoid duplicates
     const fileMap = new Map<string, string>();
     const fileNames: string[] = [];
@@ -605,17 +597,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     // Look through all previous messages for file attachments
     messageHistory.forEach(msg => {
       if (msg.fileContents && msg.fileNames) {
-        msg.fileNames.forEach((fileName, index) => {
-          // If this file name isn't in our map yet, add it
-          if (!fileMap.has(fileName)) {
-            // Extract this specific file's content by finding its section in the fileContents
-            const fileContentPattern = new RegExp(`===== FILE: ${fileName} =====\\n\\n([\\s\\S]*?)(?:\\n\\n===== FILE:|$)`);
+        msg.fileNames.forEach((fileName) => {
+          if (fileMap.has(fileName)) return;
+          try {
+            const fileContentPattern = new RegExp(`===== FILE: ${fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} =====\\n\\n([\\s\\S]*?)(?:\\n\\n===== FILE:|$)`);
             const match = msg.fileContents.match(fileContentPattern);
-
             if (match && match[1]) {
               fileMap.set(fileName, match[1]);
               fileNames.push(fileName);
             }
+          } catch (err) {
+            console.warn('Failed to extract file content for', fileName, err);
           }
         });
       }
@@ -634,9 +626,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       contents: combinedContents,
       names: fileNames
     };
-  };
+  }, []);
 
-  const prepareApiMessages = (
+  const prepareApiMessages = useCallback((
     userMessage: Message,
     currentMessageList: Message[],
     shouldUseVisionModel: boolean
@@ -697,16 +689,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
 
     // Next, collect any file attachments from previous messages
-    // Use all messages except the current one being processed
     const previousMessages = currentMessageList.filter(msg => msg.id !== userMessage.id);
     const previousFileAttachments = collectFileAttachmentsFromHistory(previousMessages);
 
     if (previousFileAttachments.names.length > 0) {
-      // If we have previous files, add them to the context
       if (fileContextMessage) {
         fileContextMessage += "\n\n";
       }
-
       const prevFiles = previousFileAttachments.names.join(", ");
       fileContextMessage += `The user has previously shared these files: ${prevFiles}. Here are their contents:\n\n${previousFileAttachments.contents}`;
     }
@@ -721,8 +710,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
     // For regular conversations, add all relevant messages
     currentMessageList.forEach(msg => {
-      if (msg.role !== 'system') { // Skip system messages, we add them separately at the beginning
-        // For non-vision models, convert complex content to text if needed
+      if (msg.role !== 'system') {
         if (!shouldUseVisionModel && Array.isArray(msg.content)) {
           // Extract text parts
           const textContent = msg.content
@@ -739,14 +727,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
               : textContent
           });
         } else {
-          // For vision model or string content, pass as is
           apiMessages.push({
             role: msg.role,
             content: msg.content
           });
         }
       }
-      // We skip system messages here as we've already added them at the beginning
     });
 
     // Add the new user message
@@ -756,10 +742,142 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     });
 
     return apiMessages;
-  };
+  }, [collectFileAttachmentsFromHistory, enhanceSystemMessageForCustomBot]);
+
+  // Centralized streaming helper: creates placeholder, streams, batches UI updates, and finalizes message
+  const beginStreaming = useCallback(async (params: {
+    apiMessages: any[];
+    model: string;
+    plugins?: { id: "web"; max_results?: number; search_prompt?: string }[];
+    onError?: (error: Error) => void;
+  }) => {
+    const { apiMessages, model, plugins, onError } = params;
+
+    // Create streaming message placeholder
+    const streamingMessageId = generateId('assistant-');
+    const initialStreamingMessage: Message = {
+      id: streamingMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      reasoning: "",
+      reasoningVisible: false,
+    };
+
+    setStreamingMessage(initialStreamingMessage);
+    streamingContentRef.current = "";
+    streamCompletedRef.current = false;
+    reasoningContentRef.current = "";
+
+    try {
+      await xaiService.streamResponse(
+        apiMessages as any,
+        apiKey,
+        {
+          onChunk: (chunk) => {
+            if (streamCompletedRef.current) return;
+            // When main answer starts streaming, auto-minimize reasoning on the streaming message
+            setStreamingMessage((prev) => prev ? { ...prev, reasoningVisible: false } : prev);
+            // Update content ref
+            if (typeof streamingContentRef.current === 'string') {
+              streamingContentRef.current += chunk;
+            } else {
+              streamingContentRef.current = chunk;
+            }
+            // Batch UI updates via rAF to reduce re-renders
+            scheduleFlush();
+          },
+          onController: (controller) => { streamControllerRef.current = controller; },
+          onReasoningChunk: (chunk) => {
+            if (streamCompletedRef.current) return;
+            reasoningContentRef.current += String(chunk);
+            setStreamingMessage((prev) => prev ? { ...prev, reasoning: reasoningContentRef.current, reasoningVisible: true } : prev);
+          },
+          onComplete: () => {
+            if (streamCompletedRef.current) return;
+            streamCompletedRef.current = true;
+            if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
+            const finalContent = streamingContentRef.current;
+
+            // Clear streaming state
+            setStreamingMessage(null);
+            setIsProcessing(false);
+            streamingContentRef.current = "";
+
+            // Create final message
+            const finalMessage: Message = {
+              id: generateId('assistant-'),
+              role: "assistant",
+              content: finalContent,
+              reasoning: reasoningContentRef.current || undefined,
+              reasoningVisible: false,
+              timestamp: new Date()
+            };
+
+            // Add to messages
+            setMessages(prev => [...prev, finalMessage]);
+            streamControllerRef.current = null;
+
+            // Handle chat ID and storage (defer slightly to allow state to settle)
+            setTimeout(() => {
+              try {
+                // Generate ID for new chat
+                if (currentChatId === null && messages.length <= 1) {
+                  const newChatId = generateId('chat-');
+                  setCurrentChatId(newChatId);
+                  localStorage.setItem(STORAGE_KEYS.CURRENT_CHAT_ID, newChatId);
+                }
+
+                // Let effects persist messages. If a chat exists, snapshot it.
+                if (currentChatId) {
+                  saveCurrentChat();
+                }
+              } catch (err) {
+                console.error("Error in onComplete timeout handler:", err);
+                setIsProcessing(false);
+              }
+            }, 100);
+          },
+          onError: (error) => {
+            console.error("Stream error:", error);
+            if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
+            setIsProcessing(false);
+            setStreamingMessage(null);
+            streamCompletedRef.current = true;
+            streamControllerRef.current = null;
+
+            if (onError) {
+              onError(error);
+              return;
+            }
+
+            toast({
+              title: "Error",
+              description: (error as Error).message || "Failed to get response from the AI backend.",
+              variant: "destructive",
+            });
+          }
+        },
+        {
+          temperature: modelTemperature,
+          max_tokens: maxTokens,
+          model,
+          plugins,
+        }
+      );
+    } catch (error) {
+      console.error("API call error:", error);
+      setIsProcessing(false);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to get response.",
+        variant: "destructive",
+      });
+    }
+  }, [apiKey, maxTokens, modelTemperature, toast, messages.length, currentChatId, saveCurrentChat, scheduleFlush]);
 
   // Handle sending a message
-  const handleSendMessage = async (
+  const handleSendMessage = useCallback(async (
     content: string,
     images: string[] = [],
     files: ProcessedFile[] = [],
@@ -807,11 +925,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           }
         }))
       ];
-
-      // If no text was provided, use a standard prompt
-      if (!content.trim() && !isBotGenerated) {
-        // Default prompt for image description is already handled above
-      }
     }
 
     // Process file information
@@ -835,14 +948,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       // Add directly to messages
       setMessages(prev => [...prev, botMessage]);
 
-      // No need for further processing
       return;
     }
 
-      // Create user message (or assistant placeholder for image gen)
-      const newMessage: Message = {
+    // Create user message
+    const newMessage: Message = {
       id,
-        role: "user",
+      role: "user",
       content: messageContent,
       timestamp: new Date(),
       fileContents: fileContents || undefined,
@@ -851,7 +963,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       imagePrompt: imagePrompt
     };
 
-    // Store current messages
+    // Snapshot current messages for preparing API payload
     const currentMessages = [...messages];
 
     // Add message to UI
@@ -859,203 +971,73 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
     // If this is an image generation request, don't send to AI engine
     if (isImageRequest || isGeneratingImage) {
-      // Don't start processing for image requests - they're handled separately
       return;
     }
 
     setIsProcessing(true);
 
-    try {
-      // Create streaming message placeholder
-      const streamingMessageId = generateId('assistant-');
-      const initialStreamingMessage: Message = {
-        id: streamingMessageId,
-        role: "assistant",
-        content: "",
-        timestamp: new Date(),
-        reasoning: "",
-        reasoningVisible: false,
-      };
+    // Prepare API messages
+    const apiMessages = prepareApiMessages(newMessage, currentMessages, shouldUseVisionModel);
 
-      setStreamingMessage(initialStreamingMessage);
-      streamingContentRef.current = "";
-      streamCompletedRef.current = false;
-      reasoningContentRef.current = "";
+    // Debug logging
+    console.log("Final API messages:", JSON.stringify(apiMessages.map(m => ({
+      role: m.role,
+      content: typeof m.content === 'string'
+        ? m.content.substring(0, 100) + (m.content.length > 100 ? '...' : '')
+        : '[complex content]'
+    }))));
 
-      // Standard model flow (no Sonar)
-      try {
-        // Prepare API messages
-        const apiMessages = prepareApiMessages(newMessage, currentMessages, shouldUseVisionModel);
+    const webSearchActive = forceWebSearch ?? isWebEnabled;
 
-        // Debug logging
-        console.log("Final API messages:", JSON.stringify(apiMessages.map(m => ({
-          role: m.role,
-          content: typeof m.content === 'string'
-            ? m.content.substring(0, 100) + (m.content.length > 100 ? '...' : '')
-            : '[complex content]'
-        }))));
+    // Select model and add plugins if web search is enabled
+    const modelToUse = shouldUseVisionModel
+      ? getVisionModel(currentModel)
+      : webSearchActive
+        ? ensureOnlineSlug(currentModel)
+        : currentModel;
 
-        const webSearchActive = forceWebSearch ?? isWebEnabled;
+    const plugins = webSearchActive ? [DEFAULT_WEB_PLUGIN] : undefined;
 
-        // Helper function to select appropriate vision model
-        const getVisionModel = (currentModel: string): string => {
-          // If current model is GLM 4.5V, use it for vision tasks
-          if (currentModel === "z-ai/glm-4.5v") {
-            return "z-ai/glm-4.5v";
-          }
-          // Default to Grok Vision Beta for other models
-          return "x-ai/grok-vision-beta";
-        };
-
-        // Select model and add plugins if web search is enabled
-        const modelToUse = shouldUseVisionModel
-          ? getVisionModel(currentModel)
-          : webSearchActive
-            ? ensureOnlineSlug(currentModel)
-            : currentModel;
-
-        const plugins = webSearchActive ? [DEFAULT_WEB_PLUGIN] : undefined;
-
-        // Use streaming API with API-aligned callback structure (single-flight guard)
-        if (streamCompletedRef.current) return;
-        await xaiService.streamResponse(
-          apiMessages as any,
-          apiKey,
-          {
-            onChunk: (chunk) => {
-              if (streamCompletedRef.current) return;
-              // When main answer starts streaming, auto-minimize reasoning on the streaming message
-              setStreamingMessage((prev) => prev ? { ...prev, reasoningVisible: false } : prev);
-              // Update content ref
-              if (typeof streamingContentRef.current === 'string') {
-                streamingContentRef.current += chunk;
-              } else {
-                streamingContentRef.current = chunk;
-              }
-              // Batch UI updates via rAF to reduce re-renders
-              scheduleFlush();
-            },
-            onController: (controller) => { streamControllerRef.current = controller; },
-          onReasoningChunk: (chunk) => {
-              if (streamCompletedRef.current) return;
-              reasoningContentRef.current += String(chunk);
-              setStreamingMessage((prev) => prev ? { ...prev, reasoning: reasoningContentRef.current, reasoningVisible: true } : prev);
-            },
-            onComplete: () => {
-              if (streamCompletedRef.current) return;
-              streamCompletedRef.current = true;
-              if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
-              // Get final content
-              const finalContent = streamingContentRef.current;
-
-              // Clear streaming state
-              setStreamingMessage(null);
-              setIsProcessing(false);
-              streamingContentRef.current = "";
-              // No global reasoning state
-
-              // Create final message
-              const finalMessage: Message = {
-                id: generateId('assistant-'),
-                role: "assistant",
-                content: finalContent,
-                reasoning: reasoningContentRef.current || undefined,
-                reasoningVisible: false,
-                timestamp: new Date()
-              };
-
-              // Add to messages
-              setMessages(prev => [...prev, finalMessage]);
-              streamControllerRef.current = null;
-
-              // Handle chat ID and storage
-              setTimeout(() => {
-                try {
-                  // Generate ID for new chat
-                  if (currentChatId === null && currentMessages.length <= 1) {
-                    const newChatId = generateId('chat-');
-                    setCurrentChatId(newChatId);
-                    localStorage.setItem(STORAGE_KEYS.CURRENT_CHAT_ID, newChatId);
-                  }
-
-                  // Save updated messages
-                  storeInLocalStorage(STORAGE_KEYS.MESSAGES, [...messages, finalMessage]);
-
-                  // Update saved chats
-                  if (currentChatId) {
-                    saveCurrentChat();
-                  }
-                } catch (err) {
-                  console.error("Error in onComplete timeout handler:", err);
-                  // Ensure isProcessing is definitely false
-                  setIsProcessing(false);
-                }
-              }, 100);
-            },
-            onError: (error) => {
-              console.error("Stream error:", error);
-              // Check for web search plugin error
-              if (webSearchActive && error.message.includes("plugin")) {
-                toast({
-                  title: "Web Search Not Available",
-                  description: "Web search is not available for this model. Trying again without web search.",
-                  variant: "default",
-                });
-                // Resend the message without web search
-                // remove the last message, which is the user message
-                setMessages(prev => prev.slice(0, -1));
-                handleSendMessage(
-                  content,
-                  images,
-                  files,
-                  isBotGenerated,
-                  isImageRequest,
-                  customMessageId,
-                  isGeneratingImage,
-                  imagePrompt,
-                  false // force web search to be false
-                );
-                return;
-              }
-
-              setIsProcessing(false);
-              setStreamingMessage(null);
-              streamCompletedRef.current = true;
-
-              toast({
-                title: "Error",
-                description: error.message || "Failed to get response from the AI backend.",
-                variant: "destructive",
-              });
-            }
-          },
-          {
-            temperature: modelTemperature,
-            max_tokens: maxTokens,
-            model: modelToUse,
-            plugins: plugins,
-          }
-        );
-      } catch (error) {
-        console.error("API call error:", error);
-
-        // Handle standard errors
-        setIsProcessing(false);
+    // Stream via centralized helper with special plugin error handling
+    await beginStreaming({
+      apiMessages: apiMessages as any[],
+      model: modelToUse,
+      plugins,
+      onError: (error) => {
+        // Check for web search plugin error and retry without web search
+        if (webSearchActive && (error.message || '').includes("plugin")) {
+          toast({
+            title: "Web Search Not Available",
+            description: "Web search is not available for this model. Trying again without web search.",
+            variant: "default",
+          });
+          // Remove the last message (the user message we just added) and retry
+          setMessages(prev => prev.slice(0, -1));
+          handleSendMessage(
+            content,
+            images,
+            files,
+            false,
+            false,
+            customMessageId,
+            isGeneratingImage,
+            imagePrompt,
+            false // force web search to be false
+          );
+          return;
+        }
 
         toast({
           title: "Error",
-          description: error instanceof Error ? error.message : "Failed to get response.",
+          description: error.message || "Failed to get response from the AI backend.",
           variant: "destructive",
         });
       }
-    } catch (error) {
-      console.error("handleSendMessage error:", error);
-      setIsProcessing(false);
-    }
-  };
+    });
+  }, [apiKey, useProxy, toast, messages, prepareApiMessages, isWebEnabled, currentModel, beginStreaming]);
 
   // Start a new chat
-  const handleStartNewChat = () => {
+  const handleStartNewChat = useCallback(() => {
     // Save current chat snapshot before resetting
     try { saveCurrentChat(); } catch {}
 
@@ -1075,7 +1057,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
     // Add a fresh welcome message
     addWelcomeMessage();
-  };
+  }, [saveCurrentChat, addWelcomeMessage]);
 
   // Save when leaving the page/tab
   useEffect(() => {
@@ -1086,10 +1068,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [messages, currentChatId, savedChats]);
+  }, [messages, currentChatId, savedChats, saveCurrentChat]);
 
   // Function to regenerate a message
-  const regenerateMessage = async (messageId: string) => {
+  const regenerateMessage = useCallback(async (messageId: string) => {
     if (isProcessing) return;
 
     // Find the message to regenerate
@@ -1110,110 +1092,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setIsProcessing(true);
 
     try {
-      // Check if we should use vision model (for images, video, or audio)
       const shouldUseVisionModel = Array.isArray(userMessage.content) &&
         userMessage.content.some(item => item.type === 'image_url' || item.type === 'video_url' || item.type === 'audio_url');
 
       // Prepare API messages
       const apiMessages = prepareApiMessages(userMessage, previousMessages, shouldUseVisionModel);
 
-      // Helper function to select appropriate vision model
-      const getVisionModel = (currentModel: string): string => {
-        // If current model is GLM 4.5V, use it for vision tasks
-        if (currentModel === "z-ai/glm-4.5v") {
-          return "z-ai/glm-4.5v";
-        }
-        // Default to Grok Vision Beta for other models
-        return "x-ai/grok-vision-beta";
-      };
-
       // Select model
       const modelToUse = shouldUseVisionModel ? getVisionModel(currentModel) : currentModel;
 
-      // Create streaming message placeholder
-      const streamingMessageId = generateId('assistant-');
-      const initialStreamingMessage: Message = {
-        id: streamingMessageId,
-        role: "assistant",
-        content: "",
-        timestamp: new Date(),
-        reasoning: "",
-        reasoningVisible: false,
-      };
-
-      setStreamingMessage(initialStreamingMessage);
-      streamingContentRef.current = "";
-      streamCompletedRef.current = false;
-
-      // Use streaming API
-      await xaiService.streamResponse(
-        apiMessages as any,
-        apiKey,
-        {
-          onChunk: (chunk) => {
-            if (streamCompletedRef.current) return;
-            // Update content ref
-            if (typeof streamingContentRef.current === 'string') {
-              streamingContentRef.current += chunk;
-            } else {
-              streamingContentRef.current = chunk;
-            }
-            // Batch UI updates via rAF
-            scheduleFlush();
-          },
-          onController: (controller) => { streamControllerRef.current = controller; },
-          onReasoningChunk: (chunk) => {
-            if (streamCompletedRef.current) return;
-            reasoningContentRef.current += String(chunk);
-            setStreamingMessage((prev) => prev ? { ...prev, reasoning: reasoningContentRef.current, reasoningVisible: true } : prev);
-          },
-            onComplete: () => {
-              if (streamCompletedRef.current) return;
-              streamCompletedRef.current = true;
-              if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
-              // Get final content
-            const finalContent = streamingContentRef.current;
-
-            // Clear streaming state
-            setStreamingMessage(null);
-            setIsProcessing(false);
-            streamingContentRef.current = "";
-
-            // Create final message
-            const finalMessage: Message = {
-              id: generateId('assistant-'),
-              role: "assistant",
-              content: finalContent,
-              reasoning: reasoningContentRef.current || undefined,
-              reasoningVisible: false,
-              timestamp: new Date()
-            };
-
-            // Add to messages
-            setMessages(prev => [...prev, finalMessage]);
-            streamControllerRef.current = null;
-          },
-          onError: (error) => {
-            console.error("Stream error during regeneration:", error);
-            if (rafIdRef.current !== null) { cancelAnimationFrame(rafIdRef.current); rafIdRef.current = null; }
-            setIsProcessing(false);
-            setStreamingMessage(null);
-            streamCompletedRef.current = true;
-            streamControllerRef.current = null;
-
-            toast({
-              title: "Error",
-              description: error.message || "Failed to regenerate response.",
-              variant: "destructive",
-            });
-          }
-        },
-        {
-          temperature: modelTemperature,
-          max_tokens: maxTokens,
-          model: modelToUse
-        }
-      );
+      // Stream via centralized helper
+      await beginStreaming({
+        apiMessages: apiMessages as any[],
+        model: modelToUse
+      });
     } catch (error) {
       console.error("Error regenerating message:", error);
       setIsProcessing(false);
@@ -1224,10 +1116,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         variant: "destructive",
       });
     }
-  };
+  }, [isProcessing, messages, prepareApiMessages, currentModel, beginStreaming, toast]);
 
   // Function to update a message with a generated image
-  const updateMessageWithImage = (messageId: string, text: string, imageUrl: string) => {
+  const updateMessageWithImage = useCallback((messageId: string, text: string, imageUrl: string) => {
     setMessages(prev => {
       const updated: Message[] = prev.map(msg => {
         if (msg.id !== messageId) return msg;
@@ -1266,9 +1158,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       return updated;
     });
-  };
+  }, [currentChatId]);
 
-  const toggleWebSearch = () => setIsWebEnabled(prev => !prev);
+  const toggleWebSearch = useCallback(() => setIsWebEnabled(prev => !prev), []);
 
   // Expose a cancel method for the current stream
   const cancelCurrentStream = useCallback(() => {
@@ -1279,8 +1171,24 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     streamCompletedRef.current = true;
   }, []);
 
-  // Context value
-  const contextValue: ChatContextType = {
+  // Cleanup on unmount: cancel any active stream and rAF
+  useEffect(() => {
+    return () => {
+      try { streamControllerRef.current?.abort(); } catch {}
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
+  }, []);
+
+  const setMessageReasoningVisible = useCallback((messageId: string, visible: boolean) => {
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reasoningVisible: visible } : m));
+    setStreamingMessage(prev => prev && prev.id === messageId ? { ...prev, reasoningVisible: visible } as Message : prev);
+  }, []);
+
+  // Context value (memoized to avoid unnecessary re-renders)
+  const contextValue: ChatContextType = useMemo(() => ({
     messages,
     setMessages,
     isProcessing,
@@ -1301,14 +1209,31 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     messagesEndRef,
     messagesContainerRef,
     regenerateMessage,
-    setMessageReasoningVisible: (messageId: string, visible: boolean) => {
-      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reasoningVisible: visible } : m));
-      setStreamingMessage(prev => prev && prev.id === messageId ? { ...prev, reasoningVisible: visible } as Message : prev);
-    },
+    setMessageReasoningVisible,
     isWebEnabled,
     toggleWebSearch,
     cancelCurrentStream,
-  };
+  }), [
+    messages,
+    isProcessing,
+    streamingMessage,
+    currentChatId,
+    savedChats,
+    addWelcomeMessage,
+    handleSendMessage,
+    updateMessageWithImage,
+    handleStartNewChat,
+    loadSavedChat,
+    deleteSavedChat,
+    renameSavedChat,
+    saveCurrentChat,
+    getChatTitle,
+    regenerateMessage,
+    setMessageReasoningVisible,
+    isWebEnabled,
+    toggleWebSearch,
+    cancelCurrentStream,
+  ]);
 
   return (
     <ChatContext.Provider value={contextValue}>
