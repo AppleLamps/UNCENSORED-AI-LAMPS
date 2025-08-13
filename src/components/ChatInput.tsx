@@ -53,41 +53,8 @@ const ChatInput = ({
     
     const trimmedInput = input.trim();
     
-    // Check if we should use image generation mode
-    // This includes explicit mode or natural language requests for image generation
-    const isImageGenerationRequest = (text: string): boolean => {
-      if (imageGenerationMode) return true;
-      
-      const generationKeywords = [
-        "generate an image",
-        "create an image",
-        "show me an image",
-        "make an image",
-        "can you generate an image",
-        "could you create an image",
-        "can you make an image",
-        "draw",
-        "generate a picture",
-        "create a picture",
-        "make a picture",
-        "show a picture",
-        "create a photo",
-        "generate a photo",
-        "make a photo of",
-        "show me a photo of",
-        "generate an illustration",
-        "create an illustration",
-        "illustrate",
-        "render an image",
-        "visualize"
-      ];
-      
-      return generationKeywords.some(keyword => 
-        text.toLowerCase().includes(keyword)
-      );
-    };
-    
-    const shouldGenerateImage = isImageGenerationRequest(trimmedInput);
+    // Only allow image generation when the toggle is explicitly enabled
+    const shouldGenerateImage = imageGenerationMode;
     
     // Clear the input field and selected files
     setInput("");

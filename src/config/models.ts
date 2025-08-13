@@ -80,56 +80,56 @@ export const modelConfigs: ModelConfig[] = [
   {
     id: "x-ai/grok-3",
     name: "Grok‑3",
-    enabled: false,
+    enabled: true,
     category: 'grok',
     description: "X.AI's Grok-3 model"
   },
   {
     id: "x-ai/grok-4",
     name: "Grok‑4",
-    enabled: false,
+    enabled: true,
     category: 'grok',
     description: "X.AI's Grok-4 model"
   },
   {
     id: "z-ai/glm-4.5",
     name: "GLM 4.5",
-    enabled: false,
+    enabled: true,
     category: 'glm',
     description: "Zhipu AI's GLM 4.5 model"
   },
   {
     id: "z-ai/glm-4.5v",
     name: "GLM 4.5V (Vision)",
-    enabled: false,
+    enabled: true,
     category: 'glm',
     description: "Zhipu AI's GLM 4.5V with vision capabilities"
   },
   {
     id: "z-ai/glm-4.5-air:free",
     name: "GLM 4.5 Air (free)",
-    enabled: false,
+    enabled: true,
     category: 'glm',
     description: "Free version of GLM 4.5 Air"
   },
   {
     id: "google/gemini-2.5-flash-lite",
     name: "Gemini 2.5 Flash Lite",
-    enabled: false,
+    enabled: true,
     category: 'gemini',
     description: "Google's Gemini 2.5 Flash Lite model"
   },
   {
     id: "google/gemini-2.5-flash",
     name: "Gemini 2.5 Flash",
-    enabled: false,
+    enabled: true,
     category: 'gemini',
     description: "Google's Gemini 2.5 Flash model"
   },
   {
     id: "google/gemini-2.5-pro",
     name: "Gemini 2.5 Pro",
-    enabled: false,
+    enabled: true,
     category: 'gemini',
     description: "Google's Gemini 2.5 Pro model"
   },
@@ -143,7 +143,7 @@ export const modelConfigs: ModelConfig[] = [
   {
     id: "openai/gpt-4o-2024-11-20",
     name: "GPT‑4o (2024‑11‑20)",
-    enabled: false,
+    enabled: true,
     category: 'gpt',
     description: "OpenAI's GPT-4o model from November 2024"
   },
@@ -164,35 +164,35 @@ export const modelConfigs: ModelConfig[] = [
   {
     id: "openai/gpt-5-chat",
     name: "GPT‑5",
-    enabled: false,
+    enabled: true,
     category: 'gpt',
     description: "OpenAI's GPT-5 chat model"
   },
   {
     id: "openai/gpt-5-mini",
     name: "GPT‑5 Mini",
-    enabled: false,
+    enabled: true,
     category: 'gpt',
     description: "OpenAI's GPT-5 Mini model"
   },
   {
     id: "anthropic/claude-opus-4.1",
     name: "Claude Opus 4.1",
-    enabled: false,
+    enabled: true,
     category: 'claude',
     description: "Anthropic's Claude Opus 4.1 model"
   },
   {
     id: "anthropic/claude-sonnet-4",
     name: "Claude Sonnet 4",
-    enabled: false,
+    enabled: true,
     category: 'claude',
     description: "Anthropic's Claude Sonnet 4 model"
   },
   {
     id: "ai21/jamba-large-1.7",
     name: "Jamba Large 1.7",
-    enabled: false,
+    enabled: true,
     category: 'other',
     description: "AI21's Jamba Large 1.7 model"
   }
