@@ -676,8 +676,8 @@ const ChatMessage = ({ message, onRegenerate }: ChatMessageProps) => {
             </div>
           )}
           
-          {/* Message actions - only visible on hover */}
-          <div className="mt-3 flex items-center gap-2 text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          {/* Message actions and usage */}
+          <div className="mt-3 flex items-center gap-3 text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors transition-opacity duration-200">
             {/* Speaker button for TTS */}
             <button
               onClick={handleTTS}
@@ -723,6 +723,23 @@ const ChatMessage = ({ message, onRegenerate }: ChatMessageProps) => {
               >
                 <RotateCw size={16} />
               </button>
+            )}
+            {/* Usage summary (assistant only, when available) */}
+            {!isUser && (message as any).usage && (
+              <div className="flex items-center gap-2 text-[11px] leading-none font-mono">
+                {typeof (message as any).usage.prompt_tokens === 'number' && (
+                  <span title="Prompt tokens">P: {(message as any).usage.prompt_tokens}</span>
+                )}
+                {typeof (message as any).usage.completion_tokens === 'number' && (
+                  <span title="Completion tokens">C: {(message as any).usage.completion_tokens}</span>
+                )}
+                {typeof (message as any).usage.total_tokens === 'number' && (
+                  <span title="Total tokens">T: {(message as any).usage.total_tokens}</span>
+                )}
+                {typeof (message as any).usage.cost === 'number' && (
+                  <span title="Cost in credits">$ {(message as any).usage.cost.toFixed(4)}</span>
+                )}
+              </div>
             )}
           </div>
         </div>

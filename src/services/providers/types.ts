@@ -97,6 +97,20 @@ export interface ChatCompletionResponse {
     total_tokens: number;
     cache_read_tokens?: number;
     cache_write_tokens?: number;
+    // OpenRouter extended fields
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+      [key: string]: unknown;
+    };
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+      [key: string]: unknown;
+    };
+    cost?: number;
+    cost_details?: {
+      upstream_inference_cost?: number;
+      [key: string]: unknown;
+    };
     [key: string]: unknown;
   };
   cache_discount?: number;
@@ -112,6 +126,8 @@ export interface ChatCompletionStreamResponse {
     };
     finish_reason: string | null;
   }[];
+  // The final SSE message may include usage accounting when requested
+  usage?: ChatCompletionResponse["usage"];
 }
 
 export interface StreamCallbacks {
@@ -120,6 +136,8 @@ export interface StreamCallbacks {
   onComplete: () => void;
   onError: (error: Error) => void;
   onController?: (controller: AbortController) => void;
+  // Emitted once when the final SSE message contains usage info
+  onUsage?: (usage: ChatCompletionResponse["usage"]) => void;
 }
 
 export interface AIServiceProvider {

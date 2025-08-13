@@ -322,7 +322,7 @@ export const xaiService = {
         await openRouterProvider.streamResponse(
           formattedMessages,
           cleanApiKey,
-          { onChunk, onComplete, onError, onReasoningChunk: callbacks.onReasoningChunk, onController: callbacks.onController },
+          { onChunk, onComplete, onError, onReasoningChunk: callbacks.onReasoningChunk, onController: callbacks.onController, onUsage: callbacks.onUsage },
           options
         );
 

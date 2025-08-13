@@ -191,7 +191,7 @@ export const openRouterProvider: AIServiceProvider = {
 
   async streamResponse(messages: Message[], apiKey: string, callbacks: StreamCallbacks, options: APIOptions = {}) {
     const cleanApiKey = prepareApiKey(apiKey);
-    const { onChunk, onComplete, onError, onReasoningChunk, onController } = callbacks;
+    const { onChunk, onComplete, onError, onReasoningChunk, onController, onUsage } = callbacks;
     let retries = 0; let aborted = false;
     while (retries <= MAX_RETRIES && !aborted) {
       try {
@@ -250,6 +250,8 @@ export const openRouterProvider: AIServiceProvider = {
         const decoder = new TextDecoder("utf-8");
         let buffer = '';
         let done = false;
+        let receivedDone = false;
+        let finalUsage: ChatCompletionResponse["usage"] | undefined;
         // Accumulate multi-line data: fields per SSE spec until blank line
         let eventDataParts: string[] = [];
 
@@ -280,13 +282,21 @@ export const openRouterProvider: AIServiceProvider = {
                 if (eventDataParts.length) {
                   const dataStr = eventDataParts.join('\n');
                   eventDataParts = [];
-                  if (dataStr === '[DONE]') { onComplete(); return; }
+                  if (dataStr === '[DONE]') {
+                    receivedDone = true;
+                    done = true;
+                    // Stop processing further; break out to finalize below
+                    break;
+                  }
                   try {
                     const parsed: ChatCompletionStreamResponse = JSON.parse(dataStr);
                     const chunk = parsed.choices?.[0]?.delta?.content;
                     const reasoningChunk = (parsed as any)?.choices?.[0]?.delta?.reasoning;
                     if (reasoningChunk && onReasoningChunk) onReasoningChunk(String(reasoningChunk));
                     if (chunk) onChunk(chunk);
+                    if (parsed.usage) {
+                      finalUsage = parsed.usage;
+                    }
                   } catch {
                     // ignore parse errors (e.g., keepalive comments not in JSON)
                   }
@@ -316,6 +326,9 @@ export const openRouterProvider: AIServiceProvider = {
           try { reader.releaseLock(); } catch {}
           try { controller.abort(); } catch {}
           if (inactivityTimer !== undefined) clearTimeout(inactivityTimer);
+        }
+        if (finalUsage && onUsage) {
+          try { onUsage(finalUsage); } catch {}
         }
         onComplete();
         return;

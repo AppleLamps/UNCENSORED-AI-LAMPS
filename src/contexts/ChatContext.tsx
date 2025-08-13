@@ -45,6 +45,25 @@ export interface Message {
   imagePrompt?: string;
   reasoning?: string;
   reasoningVisible?: boolean;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+      [key: string]: unknown;
+    };
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+      [key: string]: unknown;
+    };
+    cost?: number;
+    cost_details?: {
+      upstream_inference_cost?: number;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
 }
 
 // Minimal bot info stored with a saved chat so we can restore project context later
@@ -784,6 +803,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     reasoningContentRef.current = "";
 
     try {
+      let latestUsage: Message["usage"] | undefined;
       await xaiService.streamResponse(
         apiMessages as any,
         apiKey,
@@ -807,6 +827,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             reasoningContentRef.current += String(chunk);
             setStreamingMessage((prev) => prev ? { ...prev, reasoning: reasoningContentRef.current, reasoningVisible: true } : prev);
           },
+          onUsage: (usage) => {
+            latestUsage = usage as Message["usage"];
+            // Attach usage to the currently streaming message for later persistence
+            setStreamingMessage((prev) => prev ? { ...prev, usage } as Message : prev);
+          },
           onComplete: () => {
             if (streamCompletedRef.current) return;
             streamCompletedRef.current = true;
@@ -825,7 +850,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
               content: finalContent,
               reasoning: reasoningContentRef.current || undefined,
               reasoningVisible: false,
-              timestamp: new Date()
+              timestamp: new Date(),
+              usage: latestUsage ? { ...latestUsage } : undefined
             };
 
             // Add to messages
