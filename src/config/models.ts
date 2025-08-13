@@ -150,14 +150,14 @@ export const modelConfigs: ModelConfig[] = [
   {
     id: "openai/gpt-4.1",
     name: "GPT‑4.1",
-    enabled: false,
+    enabled: true,
     category: 'gpt',
     description: "OpenAI's GPT-4.1 model"
   },
   {
     id: "openai/gpt-5",
     name: "GPT‑5 (thinking)",
-    enabled: false,
+    enabled: true,
     category: 'gpt',
     description: "OpenAI's GPT-5 with thinking capabilities"
   },

@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
-import { Bot, User, Copy, ThumbsUp, ThumbsDown, Check, Play, RefreshCw, XCircle, Clock, RotateCw, Image, Brain, ChevronDown, ChevronUp, Download, Volume2 } from "lucide-react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import { Bot, User, Copy, ThumbsUp, ThumbsDown, Check, Play, RefreshCw, XCircle, Clock, RotateCw, Image, Brain, ChevronDown, ChevronUp, Download, Volume2, Paperclip } from "lucide-react";
 import { useChatContext } from '@/contexts/ChatContext';
 import { cn } from "@/lib/utils";
 import ReactMarkdown from 'react-markdown';
@@ -43,11 +43,15 @@ interface ChatMessageProps {
     id: string;
     role: "user" | "assistant" | "system";
     content: string | {
-      type: "text" | "image_url";
+      type: "text" | "image_url" | "file";
       text?: string;
       image_url?: {
         url: string;
         detail: "high" | "low" | "auto";
+      };
+      file?: {
+        filename: string;
+        file_data: string;
       };
     }[];
     timestamp: Date;
@@ -311,6 +315,23 @@ const ChatMessage = ({ message, onRegenerate }: ChatMessageProps) => {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [ttsError, setTtsError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Extract file attachments (e.g., PDFs) from message content or fallback to fileNames
+  const attachedFiles = useMemo(() => {
+    if (Array.isArray(message.content)) {
+      const files = message.content
+        .filter((item: any) => item && item.type === 'file' && item.file)
+        .map((item: any) => ({
+          name: item.file.filename as string,
+          url: item.file.file_data as string
+        }));
+      if (files.length > 0) return files;
+    }
+    if (message.fileNames && message.fileNames.length > 0) {
+      return message.fileNames.map(name => ({ name, url: '' }));
+    }
+    return [] as { name: string; url: string }[];
+  }, [message]);
 
   // Format timestamp for display
   const formatTimestamp = (timestamp: Date) => {
@@ -630,6 +651,30 @@ const ChatMessage = ({ message, onRegenerate }: ChatMessageProps) => {
 
           {/* Render message content */}
           {renderContent()}
+
+          {/* Attachment pills (shown under user messages) */}
+          {isUser && attachedFiles.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2 justify-end">
+              {attachedFiles.map((file, idx) => {
+                const isDownloadable = typeof file.url === 'string' && file.url.length > 0;
+                const Pill = (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200">
+                    <Paperclip size={12} />
+                    <span className="max-w-[180px] truncate" title={file.name}>{file.name}</span>
+                  </span>
+                );
+                return (
+                  <div key={`attach-${idx}`}>
+                    {isDownloadable ? (
+                      <a href={file.url} download={file.name} target="_blank" rel="noopener noreferrer">{Pill}</a>
+                    ) : (
+                      Pill
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           
           {/* Message actions - only visible on hover */}
           <div className="mt-3 flex items-center gap-2 text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
