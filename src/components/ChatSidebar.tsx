@@ -137,6 +137,17 @@ const ChatSidebar = ({ sidebarVisible, formatDate, toggleSidebar }: ChatSidebarP
         </h1>
       </div>
 
+      {/* New Chat Button */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={handleStartNewChat}
+          className="flex items-center justify-center w-full px-4 py-2.5 text-sm font-medium text-white bg-green-500 hover:bg-green-600 rounded-full shadow-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-50"
+        >
+          <Plus size={16} className="mr-2" />
+          New chat
+        </button>
+      </div>
+
       {/* Sidebar Navigation */}
       <div className="px-3 py-2">
         {FEATURES.projects && (
@@ -148,17 +159,6 @@ const ChatSidebar = ({ sidebarVisible, formatDate, toggleSidebar }: ChatSidebarP
             <span>Projects</span>
           </button>
         )}
-      </div>
-
-      {/* New Chat Button moved below navigation */}
-      <div className="px-3 pb-2">
-        <button
-          onClick={handleStartNewChat}
-          className="flex items-center justify-center w-full px-4 py-2.5 text-sm font-medium text-white bg-green-500 hover:bg-green-600 rounded-full shadow-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-50"
-        >
-          <Plus size={16} className="mr-2" />
-          New chat
-        </button>
       </div>
 
       {/* Active Project Chats */}

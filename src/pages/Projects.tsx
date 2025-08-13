@@ -5,6 +5,8 @@ import ReactMarkdown from 'react-markdown';
 import { useProjects, Project } from '@/contexts/ProjectsContext';
 import { initialMessages, SampleGPTInstructions } from '@/lib/ProjectAIInstructions';
 import { xaiService } from '@/services/api';
+import ChatMessage from '@/components/ChatMessage';
+import { ChatProvider } from '@/contexts/ChatContext';
 
 // Interface for chat messages
 interface ChatMessage {
@@ -12,6 +14,17 @@ interface ChatMessage {
   content: string;
   timestamp: string;
   quickReplies?: string[];
+  id?: string;
+  // Optional usage captured from streaming (to show tokens/cost in ChatMessage)
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    cost?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
+    completion_tokens_details?: { reasoning_tokens?: number };
+    [key: string]: unknown;
+  };
 }
 
 // Define code component props interface
@@ -1092,57 +1105,26 @@ const Projects: React.FC = () => {
                 {activeRightTab === 'preview' ? (
                   <ProjectPreviewCard project={formData} />
                 ) : (
+                  // Reuse ChatProvider so ChatMessage has required context/hooks
+                  <ChatProvider apiKey={apiKey} modelTemperature={temperature} maxTokens={maxTokens} currentModel={currentModel}>
                   <div className="chat-container h-[500px] flex flex-col">
-                    {/* Chat messages - taller scrollable area */}
-                    <div className="flex-grow overflow-y-auto mb-4 pr-1">
-                      {chatMessages.map((message, index) => (
-                        <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} mb-4`}>
-                          <div className={`flex ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-start max-w-[85%]`}>
-                            <div className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${message.role === 'user' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 ml-2' : 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 mr-2'}`}>
-                              {message.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-                            </div>
-                            <div className={`px-4 py-3 rounded-2xl chat-message ${message.role === 'user' ? 'bg-emerald-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'}`}>
-                              <ReactMarkdown
-                                components={{
-                                  code: ({ node, className, children, ...props }) => {
-                                    const match = /language-(\w+)/.exec(className || '');
-                                  return !(props as any).inline ? (
-                                      <pre className="bg-white border border-gray-200 rounded-xl overflow-x-auto text-sm shadow-sm p-4">
-                                        <code className={match ? `language-${match[1]}` : ''} {...props}>
-                                          {String(children).replace(/\n$/, '')}
-                                        </code>
-                                      </pre>
-                                    ) : (
-                                      <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm" {...props}>
-                                        {children}
-                                      </code>
-                                    );
-                                  },
-                                }}
-                              >
-                                {message.content}
-                              </ReactMarkdown>
-
-                              {/* Quick replies */}
-                              {message.quickReplies && message.quickReplies.length > 0 && (
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {message.quickReplies.map((reply, replyIndex) => (
-                                    <button
-                                      key={replyIndex}
-                                      onClick={() => handleQuickReply(reply)}
-                                      className="text-xs px-3 py-1.5 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-full border border-gray-300 dark:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                                    >
-                                      {reply}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      <div ref={messagesEndRef} />
-                    </div>
+                      {/* Chat messages - taller scrollable area */}
+                      <div className="flex-grow overflow-y-auto mb-4 pr-1">
+                        {chatMessages.map((m, index) => (
+                          <ChatMessage
+                            key={m.id || index}
+                            message={{
+                              id: m.id || `proj-${index}`,
+                              role: m.role,
+                              content: m.content,
+                              timestamp: new Date(m.timestamp),
+                              // Carry usage if present (assistant only)
+                              ...(m.role === 'assistant' && m.usage ? { usage: m.usage as any } : {}),
+                            }}
+                          />
+                        ))}
+                        <div ref={messagesEndRef} />
+                      </div>
 
                     {/* Input area - fixed at bottom */}
                     <form onSubmit={handleSendMessage} className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
@@ -1169,6 +1151,7 @@ const Projects: React.FC = () => {
                       </button>
                     </form>
                   </div>
+                  </ChatProvider>
                 )}
               </div>
             </div>
